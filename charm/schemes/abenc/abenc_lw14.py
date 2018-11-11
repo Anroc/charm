@@ -17,7 +17,6 @@ from charm.toolbox.pairinggroup import PairingGroup, ZR, G1, G2, GT, pair
 from charm.toolbox.secretutil import SecretUtil
 from charm.toolbox.ABEnc import ABEnc, Input, Output
 import numpy as np
-from functools import reduce
 
 # type annotations
 pp_t = {'g': G1, 'h': G1, 'f_0': G1, 'f': [], 'G_0': G1, 'G': [], 'H_0': G1, 'H': [], 'E': [], 'Z': []}
@@ -81,9 +80,9 @@ class CPabe_LW14(ABEnc):
                         'K_ticktick': pp['Z'][i] ** sigma,
                         'K_dash': [pp['f'][j_tick] ** sigma if j_tick != j else None for j_tick in
                                    range(0, NUM_USER_SQURT)],
-                        'K_ij': [g ** delta[index] for index in range(0, len(x))],
-                        'K_tick_ij': [(pp['H_0'] ** x[index] * pp['h']) ** delta[index] * pp['G_0'] ** -sigma for index
-                                      in range(0, len(x))]
+                        'K_ijx': [g ** delta[index] for index in range(0, len(x))],
+                        'K_tick_ijx': [(pp['H_0'] ** x[index] * pp['h']) ** delta[index] * pp['G_0'] ** -sigma for index
+                                      in range(0, len(x))],
                     }
                     return SK
 
@@ -102,6 +101,9 @@ class CPabe_LW14(ABEnc):
 
     def _pow_vector(self, g, vector):
         return np.array([g ** vector[i] for i in range(0, len(vector))])
+
+    def _get_ZR_row(self, A, k):
+        return np.array([group.init(ZR, int(A[k,i])) for i in range(0, len(A[k]))])
 
     # @Input(pp_t, GT, str)
     # @Output(ct_t)
@@ -184,12 +186,9 @@ class CPabe_LW14(ABEnc):
         # 3.
         P1, P2, P3 = [None] * l, [None] * l, [None] * l
         for k in range(0, l):
-            P1[k] = pp['f_0'] ** np.dot(A[k], u) * pp['G_0'] ** eta[k]
+            P1[k] = pp['f_0'] ** np.dot(self._get_ZR_row(A,k), u) * pp['G_0'] ** eta[k]
             P2[k] = (pp['H_0'] ** p[k] * pp['h']) ** (- eta[k])
             P3[k] = g ** eta[k]
-        P1 = np.array(P1)
-        P2 = np.array(P2)
-        P3 = np.array(P3)
 
         CT = {
             'R': R,
@@ -205,7 +204,9 @@ class CPabe_LW14(ABEnc):
             'C2': C2,
             'P1': P1,
             'P2': P2,
-            'P3': P3
+            'P3': P3,
+            'pi': pi, # todo remove
+            'u': np.array(u) # todo remove
         }
         return CT
 
@@ -216,15 +217,47 @@ class CPabe_LW14(ABEnc):
         p = ct['p']
         hash_S = [group.hash(s) for s in sk['S']]
         policy_A = np.array([A[k] for k in range(0, len(p)) if p[k] in hash_S])
+        attr_index = np.array([(k, hash_S.index(p[k])) for k in range(0, len(p)) if p[k] in hash_S])
         w = util.solveLSSSMatrix(policy_A)
-        print(w)
+        if debug:
+            print("k_cipher, k_user: \n" + str(attr_index))
+            print("w: \n" + str(w))
+            print("A:\n" + str(policy_A))
+
+        D_P = group.init(ZR, 1)
+
+        # some debug
+        # tmp_sum = 0
+        # test = np.array([2,2])
+        # for asd in range(0, len(w)):
+        #      tmp_sum += w[asd] * np.dot(policy_A[asd], test)
+        # print("tmp_sum:" + str(tmp_sum))
+        # assert tmp_sum == 2
+        # tmp_sum = group.init(ZR, 0)
+
+        for i in range(0, len(w)):
+            k_cipher, k_user = attr_index[i]
+            inner = pair(sk['K_tick'], ct['P1'][k_cipher])\
+                    * pair(sk['K_ijx'][k_user], ct['P2'][k_cipher])\
+                    * pair(sk['K_tick_ijx'][k_user], ct['P3'][k_cipher])
+            # todo: remove
+            # assert inner == pair(sk['K_tick'], pp['f_0'] ** np.dot(self._get_ZR_row(A,k_cipher), ct['u']))
+            # tmp_sum += group.init(ZR, int(w[i])) * np.dot(self._get_ZR_row(A, k_cipher), ct['u'])
+            D_P *= inner ** group.init(ZR, int(w[i]))
+
+        # assert tmp_sum == ct['pi']
+        test = pair(sk['K_tick'], pp['f_0']) ** ct['pi']
+        assert D_P == test, "Stage 1 not computed correctly."
+
+        
 
 
 def main():
     groupObj = PairingGroup('SS512')
 
     cpabe = CPabe_LW14(groupObj)
-    attrs = ['ONE', 'TWO', 'FIVE']
+    # TODO: change to FOUR -> THREE and see if a LSSS matrix adaption will be needed
+    attrs = ['ONE', 'TWO', 'FOUR']
     access_policy = '((four or three) and (three or one))'
     # access_policy = 'E and (((A and B) or (C and D)) or ((A or B) and (C or D)))'
     if debug:
@@ -243,6 +276,8 @@ def main():
     groupObj.debug(ct)
 
     rec_msg = cpabe.decrypt(pk, sk, ct)
+
+
     if debug: print("\n\nDecrypt...\n")
     if debug: print("Rec msg =>", rec_msg)
 

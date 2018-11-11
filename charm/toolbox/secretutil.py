@@ -162,9 +162,8 @@ class SecretUtil:
         import numpy as np
         expected_solution = np.zeros(A.shape[0])
         expected_solution[0] = 1
-        print(A)
-        print(expected_solution)
-        return np.linalg.lstsq(A, expected_solution)
+        # TODO: remove returning of first solution
+        return np.linalg.lstsq(A.T, expected_solution, rcond=None)[0].astype(int)
 
     def _compute_shares(self, secret, subtree, List):
         """computes recursive secret sharing over the binary tree. Start by splitting 1-of-2 (OR) or 2-of-2 (AND nodes).
