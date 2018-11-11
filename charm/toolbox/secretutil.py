@@ -102,7 +102,70 @@ class SecretUtil:
     def calculateSharesDict(self, secret, tree):
         """calculate shares from given secret and returns a dict as {attribute:shares} pairs"""        
         return self._calculateShares(secret, tree, dict)
-    
+
+    def _get_num_ANDs(self, root, subtree, c = 0):
+        queue = list()
+        queue.append(root)
+        # level order traversal
+        while len(queue) > 0:
+            node = queue.pop(0)
+            if node.getNodeType() == OpType.AND:
+                c += 1
+            if node is subtree:
+                return c
+            if node.getLeft().getNodeType() != OpType.ATTR:
+                queue.append(node.getLeft())
+            if node.getRight().getNodeType() != OpType.ATTR:
+                queue.append(node.getRight())
+
+    def calculateLSSSMatrix(self, root):
+        """
+        Calculates the LSSS matrix of the given parsed policy tree.
+        Currently does only support threshold gates of 1-of-n (OR) or n-of-n (AND)
+
+        :param root: the root node of the tree
+        :return: the LSSS matrix as an numpy array, the list p mapping each row of A to an attribute
+        """
+        import numpy as np
+        matrix, p = self._calculateLSSSMatrix(root, root)
+        max_elem = -1
+        for elem in matrix:
+            max_elem = max(max_elem, len(elem))
+        for elem in matrix:
+            elem += [0] * (max_elem - len(elem))
+        return np.array(matrix), p
+
+    def _calculateLSSSMatrix(self, root, subtree, vector=[1], c=0, matrix= [], p = []):
+        if subtree is None:
+            return None, None
+        op_type = subtree.getNodeType()
+        if op_type == OpType.ATTR:
+            matrix.append(vector)
+            p.append(subtree.getAttribute())
+        elif op_type == OpType.AND:
+            c = self._get_num_ANDs(root, subtree)
+            vector_left = [0] * c
+            vector_left.append(-1)
+            self._calculateLSSSMatrix(root, subtree.getLeft(), vector_left, c, matrix, p)
+            if len(vector) < c:
+                vector += [0] * (c-len(vector))
+            vector.append(1)
+            self._calculateLSSSMatrix(root, subtree.getRight(), vector.copy(), c, matrix, p)
+        elif op_type == OpType.OR:
+            self._calculateLSSSMatrix(root, subtree.getLeft(), vector.copy(), c, matrix, p)
+            self._calculateLSSSMatrix(root, subtree.getRight(), vector.copy(), c, matrix, p)
+        else:
+            print("unsupported OpType: " + op_type)
+        return matrix, p
+
+    def solveLSSSMatrix(self, A):
+        import numpy as np
+        expected_solution = np.zeros(A.shape[0])
+        expected_solution[0] = 1
+        print(A)
+        print(expected_solution)
+        return np.linalg.lstsq(A, expected_solution)
+
     def _compute_shares(self, secret, subtree, List):
         """computes recursive secret sharing over the binary tree. Start by splitting 1-of-2 (OR) or 2-of-2 (AND nodes).
          Continues recursively down the tree doing a round of secret sharing at each boolean node type."""
