@@ -83,6 +83,7 @@ class CPabe_LW14(ABEnc):
                         'K_ijx': [g ** delta[index] for index in range(0, len(x))],
                         'K_tick_ijx': [(pp['H_0'] ** x[index] * pp['h']) ** delta[index] * pp['G_0'] ** -sigma for index
                                       in range(0, len(x))],
+                        'sigma': sigma # TODO: remove
                     }
                     return SK
 
@@ -94,9 +95,10 @@ class CPabe_LW14(ABEnc):
 
     def _mul_and_filter(self, f, R):
         # TODO: filter revoced user
-        prod = f[0]
-        for i in range(1, len(f)):
-            prod *= f[i]
+        prod = group.init(ZR, 1)
+        for i in range(0, len(f)):
+            if i not in R:
+                prod *= f[i]
         return prod
 
     def _pow_vector(self, g, vector):
@@ -104,6 +106,13 @@ class CPabe_LW14(ABEnc):
 
     def _get_ZR_row(self, A, k):
         return np.array([group.init(ZR, int(A[k,i])) for i in range(0, len(A[k]))])
+
+    def _pair_vector(self, A, B):
+        prod = group.init(ZR, 1)
+        assert len(A) == len(B)
+        for i in range(0, len(A)):
+            prod *= pair(A[i], B[i])
+        return prod
 
     # @Input(pp_t, GT, str)
     # @Output(ct_t)
@@ -212,7 +221,10 @@ class CPabe_LW14(ABEnc):
 
     # @Input(pp_t, sk_t, ct_t)
     # @Output(GT)
-    def decrypt(self, pp, sk, ct):
+    # TODO: remove msk
+    def decrypt(self, pp, sk, ct, msk = None, user_index = 0):
+        i, j = self._calc_user_index(NUM_USER_SQURT, user_index)
+
         A = ct['A']
         p = ct['p']
         hash_S = [group.hash(s) for s in sk['S']]
@@ -235,6 +247,7 @@ class CPabe_LW14(ABEnc):
         # assert tmp_sum == 2
         # tmp_sum = group.init(ZR, 0)
 
+        # 1.
         for i in range(0, len(w)):
             k_cipher, k_user = attr_index[i]
             inner = pair(sk['K_tick'], ct['P1'][k_cipher])\
@@ -249,7 +262,24 @@ class CPabe_LW14(ABEnc):
         test = pair(sk['K_tick'], pp['f_0']) ** ct['pi']
         assert D_P == test, "Stage 1 not computed correctly."
 
-        
+        # 2.1
+        print((i,j))
+        i = 0
+        K_dash_ij = sk['K'] * self._mul_and_filter(sk['K_dash'], [j])
+        # print(K_dash_ij)
+        msk_test = pp['g'] ** msk['alpha'][i] \
+               * pp['g'] ** (msk['r'][i] * msk['c'][j]) \
+               * (pp['f_0'] * self._mul_and_filter(pp['f'], [])) ** sk['sigma']
+        # print(msk_test)
+        assert K_dash_ij == msk_test, "Stage 2.1 not completed correctly"
+
+        # 2.2
+        D_I = ((pair(K_dash_ij, ct['Q1'][i]) * pair(sk['K_ticktick'], ct['Q3'][i])) / (pair(sk['K_tick'], ct['Q2'][i]))) \
+              * self._pair_vector(ct['R2'][i], ct['C2'][j]) / self._pair_vector(ct['R1'][i], ct['C1'][j])
+
+        # 3.
+        return ct['T'][i] / (D_P * D_I)
+
 
 
 def main():
@@ -275,8 +305,7 @@ def main():
     if debug: print("\n\nCiphertext...\n")
     groupObj.debug(ct)
 
-    rec_msg = cpabe.decrypt(pk, sk, ct)
-
+    rec_msg = cpabe.decrypt(pk, sk, ct, msk = mk)
 
     if debug: print("\n\nDecrypt...\n")
     if debug: print("Rec msg =>", rec_msg)
