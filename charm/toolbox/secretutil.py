@@ -4,6 +4,7 @@ access structure as a binary tree. This could also support matrices for represen
 '''
 from charm.core.math.pairing import ZR
 from charm.toolbox.policytree import *
+import numpy as np
 
 class SecretUtil:
     def __init__(self, groupObj, verbose=True):
@@ -126,8 +127,9 @@ class SecretUtil:
         :param root: the root node of the tree
         :return: the LSSS matrix as an numpy array, the list p mapping each row of A to an attribute
         """
-        import numpy as np
-        matrix, p = self._calculateLSSSMatrix(root, root)
+        matrix, p = self._calculateLSSSMatrix(root, root, [1], 0, [], [])
+        print(matrix)
+        print(p)
         max_elem = -1
         for elem in matrix:
             max_elem = max(max_elem, len(elem))
@@ -135,7 +137,7 @@ class SecretUtil:
             elem += [0] * (max_elem - len(elem))
         return np.array(matrix), p
 
-    def _calculateLSSSMatrix(self, root, subtree, vector=[1], c=0, matrix= [], p = []):
+    def _calculateLSSSMatrix(self, root, subtree, vector, c, matrix, p):
         if subtree is None:
             return None, None
         op_type = subtree.getNodeType()
@@ -158,12 +160,35 @@ class SecretUtil:
             print("unsupported OpType: " + op_type)
         return matrix, p
 
+    def _find_linear_independent_rows(self, matrix):
+        ks = list()
+        independent_rows = list()
+        for k, row in enumerate(matrix):
+            for i in independent_rows:
+                if np.array_equal(row, i):
+                    break
+            else:
+                ks.append(k)
+                independent_rows.append(row)
+        return np.array(ks), np.array(independent_rows)
+
     def solveLSSSMatrix(self, A):
-        import numpy as np
-        expected_solution = np.zeros(A.shape[0])
+        num_rows = A.shape[0]
+        num_cols = A.shape[1]
+        if num_rows < num_cols:
+            raise Exception("Not enough arguments to satisfy policy. (%d/%d)." % A.shape)
+        print(A)
+        expected_solution = np.zeros(A.shape[1])
         expected_solution[0] = 1
-        # TODO: remove returning of first solution
-        return np.linalg.lstsq(A.T, expected_solution, rcond=None)[0].astype(int)
+        if num_rows > num_cols:
+            # make square
+            k, A = self._find_linear_independent_rows(A)
+            k = k[:num_cols]
+            A = A[:num_cols,:]
+        else:
+            k = range(0, num_cols)
+
+        return k, np.linalg.solve(A.T, expected_solution).astype(int)
 
     def _compute_shares(self, secret, subtree, List):
         """computes recursive secret sharing over the binary tree. Start by splitting 1-of-2 (OR) or 2-of-2 (AND nodes).

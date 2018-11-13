@@ -116,7 +116,9 @@ class CPabe_LW14(ABEnc):
 
     # @Input(pp_t, GT, str)
     # @Output(ct_t)
-    def encrypt(self, pp, M, policy_str, R=[], user_index=0):
+    def encrypt(self, pp, M, policy_str, R=None, user_index=0):
+        if R is None:
+            R = []
         # Setup
         policy = util.createPolicy(policy_str)
         A, p = util.calculateLSSSMatrix(policy)
@@ -230,9 +232,11 @@ class CPabe_LW14(ABEnc):
         hash_S = [group.hash(s) for s in sk['S']]
         policy_A = np.array([A[k] for k in range(0, len(p)) if p[k] in hash_S])
         attr_index = np.array([(k, hash_S.index(p[k])) for k in range(0, len(p)) if p[k] in hash_S])
-        w = util.solveLSSSMatrix(policy_A)
+        k, w = util.solveLSSSMatrix(policy_A)
+
         if debug:
             print("k_cipher, k_user: \n" + str(attr_index))
+            print("k:\n" + str(k))
             print("w: \n" + str(w))
             print("A:\n" + str(policy_A))
 
@@ -249,7 +253,8 @@ class CPabe_LW14(ABEnc):
 
         # 1.
         for i in range(0, len(w)):
-            k_cipher, k_user = attr_index[i]
+            real_index = k[i]
+            k_cipher, k_user = attr_index[real_index]
             inner = pair(sk['K_tick'], ct['P1'][k_cipher])\
                     * pair(sk['K_ijx'][k_user], ct['P2'][k_cipher])\
                     * pair(sk['K_tick_ijx'][k_user], ct['P3'][k_cipher])
@@ -267,11 +272,12 @@ class CPabe_LW14(ABEnc):
         i = 0
         K_dash_ij = sk['K'] * self._mul_and_filter(sk['K_dash'], [j])
         # print(K_dash_ij)
-        msk_test = pp['g'] ** msk['alpha'][i] \
-               * pp['g'] ** (msk['r'][i] * msk['c'][j]) \
-               * (pp['f_0'] * self._mul_and_filter(pp['f'], [])) ** sk['sigma']
-        # print(msk_test)
-        assert K_dash_ij == msk_test, "Stage 2.1 not completed correctly"
+        if msk is not None:
+            msk_test = pp['g'] ** msk['alpha'][i] \
+                        * pp['g'] ** (msk['r'][i] * msk['c'][j]) \
+                        * (pp['f_0'] * self._mul_and_filter(pp['f'], [])) ** sk['sigma']
+            # print(msk_test)
+            assert K_dash_ij == msk_test, "Stage 2.1 not completed correctly"
 
         # 2.2
         D_I = ((pair(K_dash_ij, ct['Q1'][i]) * pair(sk['K_ticktick'], ct['Q3'][i])) / (pair(sk['K_tick'], ct['Q2'][i]))) \
