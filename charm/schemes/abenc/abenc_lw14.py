@@ -59,7 +59,8 @@ class CPabe_LW14(ABEnc):
     # @Input(pp_t, mk_t, [str])
     # @Output(sk_t)
     def keygen(self, pp, mk, S):
-        mk['counter'] += 1
+        # TODO: undo to mk['counter'] += 1. system currently just supports one user at a time
+        mk['counter'] = 1
         for i in range(0, NUM_USER_SQURT):
             for j in range(0, NUM_USER_SQURT):
                 if i * NUM_USER_SQURT + j + 1 == mk['counter']:
@@ -83,7 +84,7 @@ class CPabe_LW14(ABEnc):
                         'K_ijx': [g ** delta[index] for index in range(0, len(x))],
                         'K_tick_ijx': [(pp['H_0'] ** x[index] * pp['h']) ** delta[index] * pp['G_0'] ** -sigma for index
                                       in range(0, len(x))],
-                        'sigma': sigma # TODO: remove
+                        # 'sigma': sigma # for debugging
                     }
                     return SK
 
@@ -94,7 +95,6 @@ class CPabe_LW14(ABEnc):
         return int(counter / matrix_length), counter % matrix_length
 
     def _mul_and_filter(self, f, R):
-        # TODO: filter revoced user
         prod = group.init(ZR, 1)
         for i in range(0, len(f)):
             if i not in R:
@@ -216,15 +216,14 @@ class CPabe_LW14(ABEnc):
             'P1': P1,
             'P2': P2,
             'P3': P3,
-            'pi': pi, # todo remove
-            'u': np.array(u) # todo remove
+            # 'pi': pi, # for debugging
+            # 'u': np.array(u) # for debugging
         }
         return CT
 
     # @Input(pp_t, sk_t, ct_t)
     # @Output(GT)
-    # TODO: remove msk
-    def decrypt(self, pp, sk, ct, msk = None, user_index = 0):
+    def decrypt(self, pp, sk, ct, user_index = 0): #, msk = None): for debugging
         i, j = self._calc_user_index(NUM_USER_SQURT, user_index)
 
         A = ct['A']
@@ -258,26 +257,26 @@ class CPabe_LW14(ABEnc):
             inner = pair(sk['K_tick'], ct['P1'][k_cipher])\
                     * pair(sk['K_ijx'][k_user], ct['P2'][k_cipher])\
                     * pair(sk['K_tick_ijx'][k_user], ct['P3'][k_cipher])
-            # todo: remove
             # assert inner == pair(sk['K_tick'], pp['f_0'] ** np.dot(self._get_ZR_row(A,k_cipher), ct['u']))
             # tmp_sum += group.init(ZR, int(w[i])) * np.dot(self._get_ZR_row(A, k_cipher), ct['u'])
             D_P *= inner ** group.init(ZR, int(w[i]))
 
         # assert tmp_sum == ct['pi']
-        test = pair(sk['K_tick'], pp['f_0']) ** ct['pi']
-        assert D_P == test, "Stage 1 not computed correctly."
+        # test = pair(sk['K_tick'], pp['f_0']) ** ct['pi']
+        # assert D_P == test, "Stage 1 not computed correctly."
 
         # 2.1
-        print((i,j))
+        if debug:
+            print((i,j))
         i = 0
         K_dash_ij = sk['K'] * self._mul_and_filter(sk['K_dash'], [j])
         # print(K_dash_ij)
-        if msk is not None:
-            msk_test = pp['g'] ** msk['alpha'][i] \
-                        * pp['g'] ** (msk['r'][i] * msk['c'][j]) \
-                        * (pp['f_0'] * self._mul_and_filter(pp['f'], [])) ** sk['sigma']
-            # print(msk_test)
-            assert K_dash_ij == msk_test, "Stage 2.1 not completed correctly"
+        # if msk is not None:
+        #     msk_test = pp['g'] ** msk['alpha'][i] \
+        #                 * pp['g'] ** (msk['r'][i] * msk['c'][j]) \
+        #                 * (pp['f_0'] * self._mul_and_filter(pp['f'], [])) ** sk['sigma']
+        #     # print(msk_test)
+        #     assert K_dash_ij == msk_test, "Stage 2.1 not completed correctly"
 
         # 2.2
         D_I = ((pair(K_dash_ij, ct['Q1'][i]) * pair(sk['K_ticktick'], ct['Q3'][i])) / (pair(sk['K_tick'], ct['Q2'][i]))) \
@@ -292,12 +291,11 @@ def main():
     groupObj = PairingGroup('SS512')
 
     cpabe = CPabe_LW14(groupObj)
-    # TODO: change to FOUR -> THREE and see if a LSSS matrix adaption will be needed
-    attrs = ['ONE', 'TWO', 'FOUR']
+    attrs = ['ONE', 'TWO', 'THREE']
     access_policy = '((four or three) and (three or one))'
     # access_policy = 'E and (((A and B) or (C and D)) or ((A or B) and (C or D)))'
     if debug:
-        print("Attributes =>", attrs);
+        print("Attributes =>", attrs)
         print("Policy =>", access_policy)
 
     (pk, mk) = cpabe.setup()
@@ -311,7 +309,7 @@ def main():
     if debug: print("\n\nCiphertext...\n")
     groupObj.debug(ct)
 
-    rec_msg = cpabe.decrypt(pk, sk, ct, msk = mk)
+    rec_msg = cpabe.decrypt(pk, sk, ct) # , msk = mk)
 
     if debug: print("\n\nDecrypt...\n")
     if debug: print("Rec msg =>", rec_msg)

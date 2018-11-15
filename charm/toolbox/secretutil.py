@@ -128,8 +128,8 @@ class SecretUtil:
         :return: the LSSS matrix as an numpy array, the list p mapping each row of A to an attribute
         """
         matrix, p = self._calculateLSSSMatrix(root, root, [1], 0, [], [])
-        print(matrix)
-        print(p)
+        # print(matrix)
+        # print(p)
         max_elem = -1
         for elem in matrix:
             max_elem = max(max_elem, len(elem))
@@ -177,7 +177,7 @@ class SecretUtil:
         num_cols = A.shape[1]
         if num_rows < num_cols:
             raise Exception("Not enough arguments to satisfy policy. (%d/%d)." % A.shape)
-        print(A)
+        # print(A)
         expected_solution = np.zeros(A.shape[1])
         expected_solution[0] = 1
         if num_rows > num_cols:
