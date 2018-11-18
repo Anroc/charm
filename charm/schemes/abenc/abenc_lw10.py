@@ -57,32 +57,31 @@ class CPabe_LW10(ABEnc):
     pk_next: com.berlin.tu
     pk: com.berlin
     """
-    def createDM(self, params, mk, id, pk = None, sk = None, Q  = None):
-        mk = mk['mk']
+    def createDM(self, params, mk, id):
+        mk_val = mk['mk']
 
         assert type(id) == str
-        if pk is None:
+        if 'id' not in mk:
+            # first DM creation
             assert "." not in id
-            assert sk is None
-            assert Q is None
             pk_next = id
+            sk = group.init(G1)
+            assert sk + params['P_0'] == params['P_0']
+            Q = [ params['Q_0'] ]
+            pk = None
             root_dm = True
         else:
             assert "." in id
-            assert sk is not None
-            assert Q is not None
+            sk = mk['sk']
+            Q = mk['Q_prev_union_Q']
+            pk = mk['pk']
             pk_next = pk + "." + id
             root_dm = False
 
         mk_next = group.random(ZR)
-        if sk is None:
-            sk = group.init(G1)
-            assert sk + params['P_0'] == params['P_0']
         P_next = params['H_1'](pk_next)
-        sk_next = sk + mk * P_next
+        sk_next = sk + mk_val * P_next
         Q_next = mk_next * params['P_0']
-        if Q is None:
-            Q = [ params['Q_0'] ]
         Q = Q.copy()
 
         Q_list = Q.copy()
@@ -97,7 +96,10 @@ class CPabe_LW10(ABEnc):
             'pk': pk_next,
             'id': id,
             'H_mk': lambda x : group.hash(x),
-            'id_gen': lambda x : id + "." + x
+            'id_gen': lambda x : id + "." + x,
+            'attrs': {
+                # filled later
+            }
         }
         if root_dm:
             params['P_1'] = P_next
@@ -121,10 +123,15 @@ class CPabe_LW10(ABEnc):
             'attrs': {}
         }
 
-        for pk_a in S:
+        for s in S:
+            if mk_dm['id'] != s[:s.rfind(".")]:
+                raise Exception("Attribute %s in not in the domain of %s." % (s, mk_dm['id']))
+            v = group.random()
+            pk_a = (v, mk_dm['pk'], s)
+            mk_dm['attrs'][s] = v
             P_a = mk_dm['H_mk'](pk_a) * params['P_0']
             sk_ua = mk_dm['sk'] + mk_dm['mk'] * mk_u * P_a
-            sk_u['attrs'][pk_a] = sk_ua
+            sk_u['attrs'][s] = sk_ua
         return sk_u
 
     # @Input(pp_t, mk_t, [str])
@@ -258,7 +265,7 @@ def main():
     (params, mk) = cpabe.setup()
 
     mk_dm_de = cpabe.keygen(params, mk, "de")
-    mk_dm_berlin = cpabe.keygen(params, mk, "berlin")
+    mk_dm_berlin = cpabe.keygen(params, mk_dm_de, "de.berlin")
     print("mk of DM :=>", mk_dm_de)
 
     sk_user = cpabe.keygen(params, mk_dm_berlin, "user1", attrs)
@@ -266,7 +273,7 @@ def main():
 
     rand_msg = groupObj.random(GT)
     if debug: print("msg =>", rand_msg)
-    ct = cpabe.encrypt(params, rand_msg, access_policy, sk_user['pk_u'])
+    ct = cpabe.encrypt(params, rand_msg, access_policy)
     if debug: print("\n\nCiphertext...\n")
     groupObj.debug(ct)
 

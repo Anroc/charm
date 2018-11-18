@@ -113,10 +113,12 @@ class BenchmarkTest1(unittest.TestCase):
             for j, tc in enumerate(testclasses):
                 start_time = time.time()
                 if j == 0:
-                    tc.decrypt(self.res_encrypt[i][j], self.res_keygen[i][j])
+                    reg_msg = tc.decrypt(self.res_encrypt[i][j], self.res_keygen[i][j])
                 else:
-                    tc.decrypt(setup[j][0], self.res_keygen[i][j], self.res_encrypt[i][j])
+                    reg_msg = tc.decrypt(setup[j][0], self.res_keygen[i][j], self.res_encrypt[i][j])
                 end_time = time.time()
+                # this line sec faults. really.
+                # assert reg_msg == message[j], "nope"
                 res[j].append(end_time - start_time)
 
         self.plot(res, "Decrypt")
