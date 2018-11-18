@@ -252,8 +252,8 @@ def main():
     groupObj = PairingGroup('SS512')
 
     cpabe = CPabe_LW14(groupObj)
-    attrs = ['de.four', 'de.two', 'de.three']
-    access_policy = '((de.four and de.three) or (de.three and de.one))'
+    attrs = ['de.berlin.four', 'de.berlin.two', 'de.berlin.three']
+    access_policy = '((de.four and de.berlin.three) or (de.berlin.three and de.berlin.two and de.berlin.four))'
     # access_policy = 'E and (((A and B) or (C and D)) or ((A or B) and (C or D)))'
     if debug:
         print("Attributes =>", attrs)
@@ -261,10 +261,11 @@ def main():
 
     (params, mk) = cpabe.setup()
 
-    mk_dm = cpabe.keygen(params, mk, "de")
-    print("mk of DM :=>", mk_dm)
+    mk_dm_de = cpabe.keygen(params, mk, "de")
+    mk_dm_berlin = cpabe.keygen(params, mk, "berlin")
+    print("mk of DM :=>", mk_dm_de)
 
-    sk_user = cpabe.keygen(params, mk_dm, "user1", attrs)
+    sk_user = cpabe.keygen(params, mk_dm_berlin, "user1", attrs)
     print("sk of user :=>", sk_user)
 
     rand_msg = groupObj.random(GT)
