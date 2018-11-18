@@ -29,7 +29,7 @@ debug = False
 
 
 
-class CPabe_LW14(ABEnc):
+class CPabe_LW10(ABEnc):
     def __init__(self, groupObj):
         ABEnc.__init__(self)
         global util, group
@@ -158,10 +158,10 @@ class CPabe_LW14(ABEnc):
 
     # @Input(pp_t, GT, str)
     # @Output(ct_t)
-    def encrypt(self, params, M, policy_str, pk_u = None):
-        assert pk_u is not None
+    def encrypt(self, params, M, policy_str):
         a = util.to_dnf_matrix(policy_str)
-        print(a)
+        if debug:
+            print(a)
         a_DM = list()
         N = len(a)
         n, t = list(), list()
@@ -219,7 +219,6 @@ class CPabe_LW14(ABEnc):
         user_attrs = sk_u['attrs'].keys()
         A = ct['A']
 
-        i = -1
         for j, a in enumerate(A):
             if set(a).issubset(user_attrs):
                 i = j
@@ -248,7 +247,7 @@ class CPabe_LW14(ABEnc):
 def main():
     groupObj = PairingGroup('SS512')
 
-    cpabe = CPabe_LW14(groupObj)
+    cpabe = CPabe_LW10(groupObj)
     attrs = ['de.berlin.four', 'de.berlin.two', 'de.berlin.three']
     access_policy = '((de.four and de.berlin.three) or (de.berlin.three and de.berlin.two and de.berlin.four))'
     # access_policy = 'E and (((A and B) or (C and D)) or ((A or B) and (C or D)))'
