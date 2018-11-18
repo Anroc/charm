@@ -1,10 +1,10 @@
 '''
 Zhen Liu and Duncan S. Wong (Pairing-based)
 
-| From: " Practical Attribute-Based Encryption: Traitor Tracing, Revocation, and Large Universe".
-| Published in: 2014
-| Available from: https://eprint.iacr.org/2014/616
-| Notes: java reference implementation available at https://github.com/TU-Berlin-SNET/jTR-ABE
+| From: "Hierarchical attribute-based encryption and scalable user revocation for sharing data in cloud servers".
+| Published in: 2010
+| Available from: http://www.cs.sjtu.edu.cn/~guo-my/PDF/Journals/J03.pdf
+| Notes: Policy must be present in DNF, e.g.: (a and b) or (b and c) or (c)
 | Security Assumption: standard model with selective adversaries
 |
 | type:           ciphertext-policy attribute-based encryption (public key)
@@ -13,14 +13,10 @@ Zhen Liu and Duncan S. Wong (Pairing-based)
 :Authors:    Marvin Petzolt
 :Date:            11/2018
 '''
-import operator
-from functools import reduce
 
 from charm.toolbox.pairinggroup import PairingGroup, ZR, G1, G2, GT, pair
 from charm.toolbox.secretutil import SecretUtil
 from charm.toolbox.ABEnc import ABEnc, Input, Output
-import numpy as np
-import uuid
 
 # type annotations
 pp_t = {'g': G1, 'h': G1, 'f_0': G1, 'f': [], 'G_0': G1, 'G': [], 'H_0': G1, 'H': [], 'E': [], 'Z': []}
@@ -212,7 +208,7 @@ class CPabe_LW14(ABEnc):
             'U_0': U_0,
             'A': a,
             'n_a': lcm,
-            # TODO: change to M ^ params['H_2'](pair(params['Q_0'], r * lcm * params['P_1']
+            # change to M ^ params['H_2'](pair(params['Q_0'], r * lcm * params['P_1']
             'V': M * params['H_2'](pair(params['Q_0'], r * lcm * params['P_1']))
         }
         return ct
@@ -244,6 +240,7 @@ class CPabe_LW14(ABEnc):
             lower2 *= pair(ct['U'][i][j], ct['n_a'] * sk_u['Q_tuple'][j-1])
 
         restored_blinding = upper / (lower1 * lower2)
+        # in paper this is done via xor
         return ct['V'] / params['H_2'](restored_blinding)
 
 
