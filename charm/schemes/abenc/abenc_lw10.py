@@ -13,6 +13,9 @@ Zhen Liu and Duncan S. Wong (Pairing-based)
 :Authors:    Marvin Petzolt
 :Date:            11/2018
 '''
+import operator
+from functools import reduce
+
 from charm.toolbox.pairinggroup import PairingGroup, ZR, G1, G2, GT, pair
 from charm.toolbox.secretutil import SecretUtil
 from charm.toolbox.ABEnc import ABEnc, Input, Output
@@ -48,7 +51,8 @@ class CPabe_LW14(ABEnc):
             'Q_0': Q_0,
             'H_1': lambda x : group.hash(x, type=G1),
             'H_2': lambda x : hash(str(x)),
-            'H_A': lambda x : group.hash(x)
+            'H_A': lambda x : group.hash(x),
+            'P_1': None  # root DM , init later
         }
         return params, {'mk': mk}
 
@@ -66,11 +70,13 @@ class CPabe_LW14(ABEnc):
             assert sk is None
             assert Q is None
             pk_next = id
+            root_dm = True
         else:
             assert "." in id
             assert sk is not None
             assert Q is not None
             pk_next = pk + "." + id
+            root_dm = False
 
         mk_next = group.random(ZR)
         if sk is None:
@@ -80,18 +86,25 @@ class CPabe_LW14(ABEnc):
         sk_next = sk + mk * P_next
         Q_next = mk_next * params['P_0']
         if Q is None:
-            Q = params['Q_0']
+            Q = [ params['Q_0'] ]
+        Q = Q.copy()
+
+        Q_list = Q.copy()
+        Q_list.append(Q_next)
         MK_next = {
             'mk': mk_next,
             'sk': sk_next,
             'Q_prev': Q,
             'Q': Q_next,
+            'Q_prev_union_Q': Q_list,
             'pk_prev': pk,
             'pk': pk_next,
             'id': id,
             'H_mk': lambda x : group.hash(x),
             'id_gen': lambda x : id + "." + x
         }
+        if root_dm:
+            params['P_1'] = P_next
         return MK_next
 
     """
@@ -106,15 +119,16 @@ class CPabe_LW14(ABEnc):
         mk_u = params['H_A'](pk_u)
         sk_u = {
             'Q_tuple': mk_dm['Q_prev'],
-            'sk': mk_dm['mk'] * mk_u * params['P_0'],
-            'id': id_u
+            'mk': mk_dm['mk'] * mk_u * params['P_0'],
+            'id': id_u,
+            'pk_u': pk_u,
+            'attrs': {}
         }
 
-        for s in S:
-            pk_a = mk_dm['id_gen'](s)
+        for pk_a in S:
             P_a = mk_dm['H_mk'](pk_a) * params['P_0']
             sk_ua = mk_dm['sk'] + mk_dm['mk'] * mk_u * P_a
-            sk_u[s] = sk_ua
+            sk_u['attrs'][pk_a] = sk_ua
         return sk_u
 
     # @Input(pp_t, mk_t, [str])
@@ -129,22 +143,117 @@ class CPabe_LW14(ABEnc):
             print("Creating user'%s' in domain '%s." % (id, mk['id']))
             return self.createUser(pp, mk, id, S)
 
+    def extract_ancestor_dm(self, pk):
+        return ".".join(pk.split(".")[:-1])
+
+    def extract_complete_hirachy(self, pk):
+        split = pk.split(".")
+        return [ ".".join(split[:x]) for x in range(1, len(split)+1)]
+
+    def assert_hirachical_attrs(self, a):
+        assert "." in a, "Given attribute %s in not in hirachical form. Expected form 'rm.dm.attrName'"
+
+    def lcm(self, l):
+        from math import gcd
+        lcm = l[0]
+        for i in l[1:]:
+            lcm = lcm * i / gcd(lcm, i)
+        return int(lcm)
+
     # @Input(pp_t, GT, str)
     # @Output(ct_t)
-    def encrypt(self, pp, M, policy_str):
-        pass
+    def encrypt(self, params, M, policy_str, pk_u = None):
+        assert pk_u is not None
+        a = util.to_dnf_matrix(policy_str)
+        print(a)
+        a_DM = list()
+        N = len(a)
+        n, t = list(), list()
+        for i in range(0, N):
+            n.append(len(a[i]))
+            a_DM.append(list())
+            for j in range(0, len(a[i])):
+                self.assert_hirachical_attrs(a[i][j])
+                a_DM[i].append(self.extract_ancestor_dm(a[i][j]))
+            t.append(len(set(a_DM[i])) - 1)
+
+        lcm = self.lcm(n)
+        print("lcm of %s is %d" % (str(n), lcm))
+
+        P = list()
+        P_a = list()
+        U = list()
+        r = group.random()
+        U_0 = r * params['P_0']
+        for i in range(0, N):
+            U.append(list())
+            P.append(list())
+            P_a.append(list())
+            sum = group.init(G1, 0)
+            for j in range(0, n[i]):
+                P_a[i].append(params['H_A'](a[i][j]) * params['P_0'])
+                sum += P_a[i][j]
+
+                if j <= t[i]:
+                    P[i].append(params['H_1'](a_DM[i][j]))
+                if j != 0:
+                    if j <= t[i]:
+                        U[i].append(r * P[i][j])
+                else:
+                    # relaced later
+                    U[i].append(None)
+            U[i][0] = r * sum
+
+        ct = {
+            't': t,
+            'n': n,
+            'N': N,
+            'U': U,
+            'U_0': U_0,
+            'A': a,
+            'n_a': lcm,
+            # TODO: change to M ^ params['H_2'](pair(params['Q_0'], r * lcm * params['P_1']
+            'V': M * params['H_2'](pair(params['Q_0'], r * lcm * params['P_1']))
+        }
+        return ct
 
     # @Input(pp_t, sk_t, ct_t)
     # @Output(GT)
-    def decrypt(self, pp, sk, ct):
-        pass
+    def decrypt(self, params, sk_u, ct):
+        user_attrs = sk_u['attrs'].keys()
+        A = ct['A']
+
+        i = -1
+        for j, a in enumerate(A):
+            if set(a).issubset(user_attrs):
+                i = j
+                break
+        else:
+            raise Exception("user does not satisfy policy")
+
+        # we are only working with the i-th entry from now on
+        sk_sum = group.init(G1, 0)
+        for s in a:
+            sk_sum += sk_u['attrs'][s]
+        n_div = int(ct['n_a'] / ct['n'][i])
+
+        upper = pair(ct['U_0'], n_div * sk_sum)
+        lower1 = pair(sk_u['mk'], n_div * ct['U'][i][0])
+        lower2 = group.init(ZR, 1)
+        for j in range(1, ct['t'][i]):
+            lower2 *= pair(ct['U'][i][j], ct['n_a'] * sk_u['Q_tuple'][j-1])
+
+        restored_blinding = upper / (lower1 * lower2)
+        return ct['V'] / params['H_2'](restored_blinding)
+
+
 
 def main():
     groupObj = PairingGroup('SS512')
 
     cpabe = CPabe_LW14(groupObj)
-    attrs = ['ONE', 'TWO', 'THREE']
-    access_policy = '((four or three) and (three or one))'
+    attrs = ['de.four', 'de.two', 'de.three']
+    access_policy = '((de.four and de.three) or (de.three and de.one))'
     # access_policy = 'E and (((A and B) or (C and D)) or ((A or B) and (C or D)))'
     if debug:
         print("Attributes =>", attrs)
@@ -160,11 +269,11 @@ def main():
 
     rand_msg = groupObj.random(GT)
     if debug: print("msg =>", rand_msg)
-    ct = cpabe.encrypt(params, rand_msg, access_policy)
+    ct = cpabe.encrypt(params, rand_msg, access_policy, sk_user['pk_u'])
     if debug: print("\n\nCiphertext...\n")
     groupObj.debug(ct)
 
-    rec_msg = cpabe.decrypt(params, sk_user, ct) # , msk = mk)
+    rec_msg = cpabe.decrypt(params, sk_user, ct)
 
     if debug: print("\n\nDecrypt...\n")
     if debug: print("Rec msg =>", rec_msg)

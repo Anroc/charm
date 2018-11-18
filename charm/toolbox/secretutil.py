@@ -5,6 +5,7 @@ access structure as a binary tree. This could also support matrices for represen
 from charm.core.math.pairing import ZR
 from charm.toolbox.policytree import *
 import numpy as np
+import re
 
 class SecretUtil:
     def __init__(self, groupObj, verbose=True):
@@ -253,6 +254,17 @@ class SecretUtil:
             self._getAttributeList(Node.getLeft(), List)
             self._getAttributeList(Node.getRight(), List)
         return None
+
+    def to_dnf_matrix(self, policy_str):
+        # [()\s]+ matches any ( or ) and any whitspace character
+        policy = re.sub(r"[()\s]+", '', policy_str, flags=re.IGNORECASE)
+        dist = re.split(r"or", policy, flags=re.IGNORECASE)
+        ret = list()
+        for i, d in enumerate(dist):
+            ret.append(re.split(r"and", d, flags=re.IGNORECASE))
+        return ret
+
+
 
 # TODO: add test cases here for SecretUtil
 if __name__ == "__main__":
