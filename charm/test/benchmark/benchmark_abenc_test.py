@@ -5,14 +5,14 @@ import sys
 from charm.schemes.abenc.abenc_lsw08 import KPabe
 from charm.schemes.abenc.abenc_unmcpabe_yahk14 import CPABE_YAHK14
 from charm.schemes.abenc.abenc_lw14 import CPabe_LW14
-from charm.schemes.abenc.abenc_lw10 import CPabe_LW10
+from charm.schemes.abenc.abenc_wlwg11 import CPabe_WLGW11
 from charm.toolbox.pairinggroup import PairingGroup, GT
 
 import matplotlib.pyplot as plt
 import numpy as np
 
 groups = [PairingGroup('SS512'),  PairingGroup('SS512'),  PairingGroup('SS512'), PairingGroup('SS512')]
-testclasses = [KPabe(groups[0]), CPABE_YAHK14(groups[1]), CPabe_LW14(groups[2]), CPabe_LW10(groups[3])]
+testclasses = [KPabe(groups[0]), CPABE_YAHK14(groups[1]), CPabe_LW14(groups[2]), CPabe_WLGW11(groups[3])]
 setup = [tc.setup() for tc in testclasses]
 message = [group.random() for group in groups]
 
@@ -142,9 +142,9 @@ class BenchmarkTest1(unittest.TestCase):
         axes.set_xlabel(xlable)
         x = np.linspace(1, self.NUM_RUN, num=self.NUM_RUN)
         axes.plot(x, res[0], marker=".", label="[LSW 08] - KP")
-        axes.plot(x, res[1], marker="^", label="[YAHK 14] - CP with non-monoton")
+        axes.plot(x, res[1], marker="^", label="[YAHK 14] - CP with non-monotone")
         axes.plot(x, res[2], marker="X", label="[LW 14] - CP")
-        axes.plot(x, res[3], marker="P", label="[LW 10] - CP hirachical")
+        axes.plot(x, res[3], marker="P", label="[WLWG 11] - CP hierarchical")
         if self.index == 1:
             axes.legend()
 

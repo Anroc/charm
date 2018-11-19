@@ -1,10 +1,11 @@
 '''
-Zhen Liu and Duncan S. Wong (Pairing-based)
+Guojun Wang, Qin Liu, Jie Wu, Minyi Guo (Pairing-based)
 
 | From: "Hierarchical attribute-based encryption and scalable user revocation for sharing data in cloud servers".
-| Published in: 2010
-| Available from: http://www.cs.sjtu.edu.cn/~guo-my/PDF/Journals/J03.pdf
-| Notes: Policy must be present in DNF, e.g.: (a and b) or (b and c) or (c)
+| Published in: 2011
+| Available from: https://www.sciencedirect.com/science/article/pii/S0167404811000678
+| Notes: Policy must be present in DNF, e.g.: (a and b) or (b and c) or (c).
+         Base paper was: http://www.cs.sjtu.edu.cn/~guo-my/PDF/Journals/J03.pdf
 | Security Assumption: standard model with selective adversaries
 |
 | type:           ciphertext-policy attribute-based encryption (public key)
@@ -29,7 +30,7 @@ debug = False
 
 
 
-class CPabe_LW10(ABEnc):
+class CPabe_WLGW11(ABEnc):
     def __init__(self, groupObj):
         ABEnc.__init__(self)
         global util, group
@@ -254,7 +255,7 @@ class CPabe_LW10(ABEnc):
 def main():
     groupObj = PairingGroup('SS512')
 
-    cpabe = CPabe_LW10(groupObj)
+    cpabe = CPabe_WLGW11(groupObj)
     attrs = ['de.berlin.four', 'de.berlin.two', 'de.berlin.three']
     access_policy = '((de.four and de.berlin.three) or (de.berlin.three and de.berlin.two and de.berlin.four))'
     # access_policy = 'E and (((A and B) or (C and D)) or ((A or B) and (C or D)))'
