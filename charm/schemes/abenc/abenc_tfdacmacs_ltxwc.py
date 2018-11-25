@@ -53,9 +53,14 @@ class TFDACMACS(object):
 
 
     def registerUser(self, GPP):
-        '''Generate user keys (executed by user, signed by CA).'''
+        """
+        Registers a user to the CA.
+        :param GPP: the global public paramter
+        :return: the global user id, a certificate for the users keys
+        """
         g = GPP['g']
         uid = str(uuid.uuid4())
+        # TODO: figure out for when they are used.
         sk = self.group.random()
         pk = g ** sk
 
@@ -67,8 +72,15 @@ class TFDACMACS(object):
         }
 
     def setupAuthority(self, GPP, authorityid, attributes):
-        """Generate attribute authority keys (executed by attribute authority)"""
-        # Attributes are expected to be a dict from attribute to all attribute values
+        """
+        Registeres an authority.
+        Authority will be created with the given id and with the given attributes.
+
+        :param GPP: global public paramteres
+        :param authorityid: the string id of the authority
+        :param attributes: a dict of attribute identifier and their respective value universe as a list
+        :return: the public and private key of the authority
+        """
         g = GPP['g']
         x = self.group.random()
         APK = pair(g, g) ** x
@@ -499,7 +511,11 @@ def basicTest_withput2FA():
     return dac, GPP, authorities, APK, ASK, alice, aliceAttriubtes, SK_alice, None, None, m, CT
 
 
-def revocationTest(dac, GPP, authorities, APK, ASK, alice, aliceAttriubtes, SK_alice, OPK_bob, DO_alice_to_bob, m, CT):
+def revocationTest(setupMethod):
+    print("=== Setup for revocation. ===")
+    dac, GPP, authorities, APK, ASK, alice, aliceAttriubtes, SK_alice, OPK_bob, DO_alice_to_bob, m, CT = setupMethod()
+    print("=== Setup finished. ===")
+
     attrToRevoke = aliceAttriubtes[0]
     print("Revoking: ", attrToRevoke)
 
