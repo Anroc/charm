@@ -160,7 +160,7 @@ class TFDACMACS(object):
         return aa_groups, post_processed_attributes
 
 
-    def encrypt(self, GPP, policy_str, m, pk_authorities, OSK):
+    def encrypt(self, GPP, policy_str, m, pk_authorities, OSK = None):
         # executed by data owner
         # under the assumption that the attributes have the form authority_id.attr:value
         attributes = self.util.createNofNThresholdPolicy(policy_str)
@@ -181,11 +181,11 @@ class TFDACMACS(object):
             attr_id = attribute['identifier']
             attr_value = attribute['value']
             C_3 *= AAs[aid]['aa']['UPK'][attr_id][attr_value]
-        C_3 **= (s + OSK['alpha'])
+        C_3 **= s + OSK['alpha'] if OSK is not None else s
 
         label = str(uuid.uuid4())
         return {
-            'oid': OSK['oid'],
+            'oid': OSK['oid'] if OSK is not None else None,
             'ID_w': label,
             'W': attributes,
             'C_1': C_1,
@@ -194,7 +194,7 @@ class TFDACMACS(object):
         }
 
 
-    def decrypt(self, GPP, CT, userObj, SK_uid, SK_uid_oid, authorities):
+    def decrypt(self, GPP, CT, userObj, SK_uid, authorities, twoFA_key = None):
         SK_W = self.group.init(ZR, 1)
         UPK_W = self.group.init(ZR, 1)
         for attr_policy in CT['W']:
@@ -209,7 +209,11 @@ class TFDACMACS(object):
             SK_W *= SK_uid[attr_identifier][attr_value]
             UPK_W *= authorities[auth_identifier]['UPK'][attr_identifier][attr_value]
 
-        return (CT['C_1'] * pair(GPP['H'](userObj['uid']), CT['C_3'])) / (pair(CT['C_2'], SK_W) * pair(SK_uid_oid, UPK_W))
+        if twoFA_key is not None:
+            return (CT['C_1'] * pair(GPP['H'](userObj['uid']), CT['C_3'])) \
+                   / (pair(CT['C_2'], SK_W) * pair(twoFA_key, UPK_W))
+        else:
+            return (CT['C_1'] * pair(GPP['H'](userObj['uid']), CT['C_3'])) / pair(CT['C_2'], SK_W)
 
 
 def basicTest():
@@ -252,7 +256,7 @@ def basicTest():
     CT = dac.encrypt(GPP, policy_str, m, authorities, OSK_bob)
 
     # Alice decrypts message
-    PT = dac.decrypt(GPP, CT, alice, SK_alice, DO_alice_to_bob, authorities)
+    PT = dac.decrypt(GPP, CT, alice, SK_alice, authorities, twoFA_key=DO_alice_to_bob)
 
     assert m == PT, 'FAILED DECRYPTION!'
     print('SUCCESSFUL DECRYPTION')
@@ -293,7 +297,7 @@ def basicTest_complexAttribute():
     CT = dac.encrypt(GPP, policy_str, m, authorities, OSK_bob)
 
     # Alice decrypts message
-    PT = dac.decrypt(GPP, CT, alice, SK_alice, DO_alice_to_bob, authorities)
+    PT = dac.decrypt(GPP, CT, alice, SK_alice, authorities, twoFA_key=DO_alice_to_bob)
 
     assert m == PT, 'FAILED DECRYPTION!'
     print('SUCCESSFUL DECRYPTION')
@@ -343,7 +347,42 @@ def basicTest_withMultipleAuthorities():
     CT = dac.encrypt(GPP, policy_str, m, authorities, OSK_bob)
 
     # Alice decrypts message
-    PT = dac.decrypt(GPP, CT, alice, SK_alice, DO_alice_to_bob, authorities)
+    PT = dac.decrypt(GPP, CT, alice, SK_alice, authorities, twoFA_key=DO_alice_to_bob)
+
+    assert m == PT, 'FAILED DECRYPTION!'
+    print('SUCCESSFUL DECRYPTION')
+
+
+def basicTest_withput2FA():
+    print("RUN basicTest without 2FA")
+    groupObj = PairingGroup('SS512')
+    dac = TFDACMACS(groupObj)
+    GPP = dac.setup()
+
+    # authority registry
+    authorities = {}
+
+    # setup authority with no attributes yet.
+    authorityId = "tuBerlin"
+    APK, ASK = dac.setupAuthority(GPP, authorityId, dict())
+    authorities[authorityId] = APK
+
+    # register alice as the message receiver
+    alice = dac.registerUser(GPP)
+    aliceAttriubtes = [
+        "tuBerlin.email:alice@campus.tu-berlin.de"
+    ]
+    SK_alice = dac.keygen(GPP, aliceAttriubtes, alice, ASK, APK)
+
+    # random message
+    m = groupObj.random(GT)
+
+    # bob encrypts message
+    policy_str = 'tuBerlin.email:alice@campus.tu-berlin.de'
+    CT = dac.encrypt(GPP, policy_str, m, authorities)
+
+    # Alice decrypts message
+    PT = dac.decrypt(GPP, CT, alice, SK_alice, authorities)
 
     assert m == PT, 'FAILED DECRYPTION!'
     print('SUCCESSFUL DECRYPTION')
@@ -352,4 +391,5 @@ if __name__ == '__main__':
     basicTest()
     basicTest_complexAttribute()
     basicTest_withMultipleAuthorities()
+    basicTest_withput2FA()
     # test()
