@@ -1,16 +1,16 @@
 '''
 Kan Yang, Xiaohua Jia
 
-| From: DAC-MACS: Effective Data Access Control for Multi-Authority Cloud Storage Systems
-| Published in:  Security for Cloud Storage Systems  - SpringerBriefs in Computer Science 2014
-| Available From: http://link.springer.com/chapter/10.1007/978-1-4614-7873-7_4
-| Notes:
+| From: Two-Factor Data Access Control With Efficient Revocation for Multi-Authority Cloud Storage Systems
+| Published in:   IEEE
+| Available From: https://ieeexplore.ieee.org/document/7570209
+| Notes: n-of-n threshhold gate policy
 
 * type:           ciphertext-policy attribute-based encryption (public key)
 * setting:        Pairing
 
-:Authors:   artjomb
-:Date:      07/2014
+:Authors:   Marvin Petzolt
+:Date:      11/2018
 '''
 
 from charm.toolbox.pairinggroup import PairingGroup, ZR, G1, GT, pair
@@ -20,8 +20,8 @@ import uuid
 
 class TFDACMACS(object):
     def __init__(self, groupObj):
-        self.util = SecretUtil(groupObj, verbose=False)  # Create Secret Sharing Scheme
-        self.group = groupObj  #:Prime order group
+        self.util = SecretUtil(groupObj, verbose=False)
+        self.group = groupObj
 
     def setup(self):
         '''Global Setup (executed by CA)'''
@@ -34,9 +34,8 @@ class TFDACMACS(object):
         '''Generate user keys (executed by user, signed by CA).'''
         g = GPP['g']
         uid = str(uuid.uuid4())
-        # TODO: include, but currently not used...
-        # sk = self.group.random()
-        # pk = g ** sk
+        sk = self.group.random()
+        pk = g ** sk
 
         # TODO: sign sk and pk
         return {
