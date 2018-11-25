@@ -103,13 +103,16 @@ class TFDACMACS(object):
         }
         return OSK, OPK
 
-    def keygen(self, GPP, attributes, userObj, SK, PK):
-        '''Generate user keys for a specific attribute (executed on attribute authority)'''
+    def keygen(self, GPP, attributes, userObj, SK, PK, extend_sk = None):
         # TODO: validate users certificate
+
+        if extend_sk is None:
+            SK_uid = dict()
+        else:
+            SK_uid = extend_sk
 
         H = GPP['H']
         g = GPP['g']
-        SK_uid = dict()
         # register missing attribute values
         for attribute in attributes:
             attr_split = attribute.split(":")
@@ -136,7 +139,7 @@ class TFDACMACS(object):
             value = attr_value_split[1]
             assert len(attr_value_split) == 2, "Expected attribute of form 'aid.attr_name:attr_value' but was %s." % attribute
             assert current_aid in pk_authorities, "Authority %s for attribute %s not found." % (current_aid, attribute)
-            assert value in pk_authorities[current_aid]['UPK'][attribute_identifier], "Authority %s for attribute %s not found." % (current_aid, attribute)
+            assert attribute_identifier in pk_authorities[current_aid]['UPK'] and value in pk_authorities[current_aid]['UPK'][attribute_identifier], "Authority %s for attribute %s not found." % (current_aid, attribute)
             aa = pk_authorities[current_aid]
 
             if current_aid not in aa_groups:
@@ -191,19 +194,20 @@ class TFDACMACS(object):
         }
 
 
-    def decrypt(self, GPP, CT, userObj, SK_uid, SK_uid_oid, APK):
+    def decrypt(self, GPP, CT, userObj, SK_uid, SK_uid_oid, authorities):
         SK_W = self.group.init(ZR, 1)
         UPK_W = self.group.init(ZR, 1)
         for attr_policy in CT['W']:
             attr_split = attr_policy.split(":")
             attr_identifier = attr_split[0]
             attr_value = attr_split[1]
+            auth_identifier = attr_identifier.split(".")[0]
 
             if not SK_uid[attr_identifier] or not SK_uid[attr_identifier][attr_value]:
                 raise Exception("user does not fulfill policy. Missing attribute %s" % attr_policy)
 
             SK_W *= SK_uid[attr_identifier][attr_value]
-            UPK_W *= APK['UPK'][attr_identifier][attr_value]
+            UPK_W *= authorities[auth_identifier]['UPK'][attr_identifier][attr_value]
 
         return (CT['C_1'] * pair(GPP['H'](userObj['uid']), CT['C_3'])) / (pair(CT['C_2'], SK_W) * pair(SK_uid_oid, UPK_W))
 
@@ -248,25 +252,104 @@ def basicTest():
     CT = dac.encrypt(GPP, policy_str, m, authorities, OSK_bob)
 
     # Alice decrypts message
-    PT = dac.decrypt(GPP, CT, alice, SK_alice, DO_alice_to_bob, APK)
-
-    print("M:", m)
-    print("PT:", PT)
+    PT = dac.decrypt(GPP, CT, alice, SK_alice, DO_alice_to_bob, authorities)
 
     assert m == PT, 'FAILED DECRYPTION!'
     print('SUCCESSFUL DECRYPTION')
 
 
-def test():
+def basicTest_complexAttribute():
+    print("RUN basicTest with complex attributes")
     groupObj = PairingGroup('SS512')
-    # k = groupObj.random()
-    # print "k", k, ~k, k * ~k
-    # g = groupObj.random(G1)
-    # print "g", g, pair(g, g)
-    # gt = groupObj.random(GT)
-    # print "gt", gt
+    dac = TFDACMACS(groupObj)
+    GPP = dac.setup()
 
+    # authority registry
+    authorities = {}
+
+    # setup authority with no attributes yet.
+    authorityId = "tuBerlin"
+    APK, ASK = dac.setupAuthority(GPP, authorityId, dict())
+    authorities[authorityId] = APK
+
+    # register alice as the message receiver
+    alice = dac.registerUser(GPP)
+    aliceAttriubtes = [
+        "tuBerlin.email:alice@campus.tu-berlin.de"
+    ]
+    SK_alice = dac.keygen(GPP, aliceAttriubtes, alice, ASK, APK)
+
+    # register bob as the message sender (data owner)
+    OSK_bob, OPK_bob = dac.setupDataOwner(GPP)
+
+    # register alice to bob
+    DO_alice_to_bob = dac.authRequest(GPP, alice, OSK_bob)
+
+    # random message
+    m = groupObj.random(GT)
+
+    # bob encrypts message
+    policy_str = 'tuBerlin.email:alice@campus.tu-berlin.de'
+    CT = dac.encrypt(GPP, policy_str, m, authorities, OSK_bob)
+
+    # Alice decrypts message
+    PT = dac.decrypt(GPP, CT, alice, SK_alice, DO_alice_to_bob, authorities)
+
+    assert m == PT, 'FAILED DECRYPTION!'
+    print('SUCCESSFUL DECRYPTION')
+
+
+def basicTest_withMultipleAuthorities():
+    print("RUN basicTest with multiple authorities")
+    groupObj = PairingGroup('SS512')
+    dac = TFDACMACS(groupObj)
+    GPP = dac.setup()
+
+    # authority registry
+    authorities = {}
+
+    # setup authority tuBerlin with no attributes yet.
+    authorityIdTuBerlin = "tuBerlin"
+    APK_TU, ASK_TU = dac.setupAuthority(GPP, authorityIdTuBerlin, dict())
+    authorities[authorityIdTuBerlin] = APK_TU
+
+    # setup authority HPI with no attributes yet.
+    authorityIdHPI = "HPI"
+    APK_HPI, ASK_HPI = dac.setupAuthority(GPP, authorityIdHPI, dict())
+    authorities[authorityIdHPI] = APK_HPI
+
+    # register alice as the message receiver
+    alice = dac.registerUser(GPP)
+    aliceAttriubtesTU = [
+        "tuBerlin.email:alice@campus.tu-berlin.de"
+    ]
+    SK_alice = dac.keygen(GPP, aliceAttriubtesTU, alice, ASK_TU, APK_TU)
+    aliceAttributesHPI = [
+        "HPI.studentStatus:guest"
+    ]
+    SK_alice = dac.keygen(GPP, aliceAttributesHPI, alice, ASK_HPI, APK_HPI, extend_sk=SK_alice)
+
+    # register bob as the message sender (data owner)
+    OSK_bob, OPK_bob = dac.setupDataOwner(GPP)
+
+    # register alice to bob
+    DO_alice_to_bob = dac.authRequest(GPP, alice, OSK_bob)
+
+    # random message
+    m = groupObj.random(GT)
+
+    # bob encrypts message
+    policy_str = 'tuBerlin.email:alice@campus.tu-berlin.de and HPI.studentStatus:guest'
+    CT = dac.encrypt(GPP, policy_str, m, authorities, OSK_bob)
+
+    # Alice decrypts message
+    PT = dac.decrypt(GPP, CT, alice, SK_alice, DO_alice_to_bob, authorities)
+
+    assert m == PT, 'FAILED DECRYPTION!'
+    print('SUCCESSFUL DECRYPTION')
 
 if __name__ == '__main__':
     basicTest()
+    basicTest_complexAttribute()
+    basicTest_withMultipleAuthorities()
     # test()
