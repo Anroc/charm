@@ -88,7 +88,7 @@ class KPabe(ABEnc):
             return True
         return False    
     
-    def encrypt(self, pk, M,  ):
+    def encrypt(self, pk, M, attr_list):
         if debug: print('Encryption Algorithm...')    
         # s will hold secret
         t = group.init(ZR, 0)
