@@ -264,6 +264,17 @@ class SecretUtil:
             ret.append(re.split(r"and", d, flags=re.IGNORECASE))
         return ret
 
+    def createNofNThresholdPolicy(self, policy_str):
+        any_brackets_or_whitespaces = "[()\s]+"
+        and_with_sperators = re.compile(any_brackets_or_whitespaces + "and" + any_brackets_or_whitespaces, flags=re.IGNORECASE)
+        or_with_sperators = re.compile(any_brackets_or_whitespaces + "or" + any_brackets_or_whitespaces, flags=re.IGNORECASE)
+
+        # matches any ( or ) or whitespace befor and after an 'and' and removes it
+        values = re.split(and_with_sperators, policy_str)
+        for value in values:
+            assert not or_with_sperators.match(value), "Only n-of-n threshold policy supported (only AND support)."
+        return values
+
 
 
 # TODO: add test cases here for SecretUtil

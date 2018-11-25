@@ -34,14 +34,15 @@ class TFDACMACS(object):
         '''Generate user keys (executed by user, signed by CA).'''
         g = GPP['g']
         uid = str(uuid.uuid4())
-        sk = self.group.random()
-        pk = g ** sk
+        # TODO: include, but currently not used...
+        # sk = self.group.random()
+        # pk = g ** sk
 
         # TODO: sign sk and pk
         return {
             'uid': uid,
-            'pk': pk,
-            'sk': sk
+            'pk': None,
+            'sk': None
         }
 
     def setupAuthority(self, GPP, authorityid, attributes):
@@ -148,38 +149,37 @@ class TFDACMACS(object):
                 aa_groups[current_aid]['n'] += 1
 
             post_processed_attributes.append({
+                'identifier': attribute_identifier,
                 'name': attribute,
                 'aid': current_aid,
                 'value': value
             })
 
-            return aa_groups, post_processed_attributes
+        return aa_groups, post_processed_attributes
 
 
     def encrypt(self, GPP, policy_str, m, pk_authorities, OSK):
         # executed by data owner
         # under the assumption that the attributes have the form authority_id.attr:value
-        assert not " or " in policy_str.lower(), "Only n-of-n threshold policy supported"
-        policy = self.util.p(policy_str)
-        attributes = self.util.getAttributeList(policy)
-
-
+        attributes = self.util.createNofNThresholdPolicy(policy_str)
         AAs, pp_attributes = self._groupByAuthorityAndCount(attributes, pk_authorities)
 
         g = GPP['g']
         s = self.group.random()
-        C_1 = self.group.init(1)
+        C_1 = self.group.init(ZR, 1)
         C_2 = g ** s
-        C_3 = self.group.init(1)
+        C_3 = self.group.init(ZR, 1)
 
-        for aid, AA in AAs:
-            C_1 *= AA['aa']['APK'] ** AA['n']
+        for aid, AA in AAs.items():
+            C_1 *= AA['aa']['APK'] ** self.group.init(ZR, AA['n'])
         C_1 = m * C_1 ** s
 
         for attribute in pp_attributes:
-            attr_value_pk = AAs[attribute['aid']]['aa']['UPK'][attribute['name']][attribute['value']]
-            C_3 *= attr_value_pk
-        C_3 **= s + OSK['alpha']
+            aid = attribute['aid']
+            attr_id = attribute['identifier']
+            attr_value = attribute['value']
+            C_3 *= AAs[aid]['aa']['UPK'][attr_id][attr_value]
+        C_3 **= (s + OSK['alpha'])
 
         label = str(uuid.uuid4())
         return {
@@ -193,10 +193,8 @@ class TFDACMACS(object):
 
 
     def decrypt(self, GPP, CT, userObj, SK_uid, SK_uid_oid, APK):
-        '''Decrypts the content(-key) from the cipher-text using the token and the user secret key (executed by user/content consumer)'''
-
-        SK_W = self.group.init(1)
-        UPK_W = self.group.init(1)
+        SK_W = self.group.init(ZR, 1)
+        UPK_W = self.group.init(ZR, 1)
         for attr_policy in CT['W']:
             attr_split = attr_policy.split(":")
             attr_identifier = attr_split[0]
@@ -206,12 +204,9 @@ class TFDACMACS(object):
                 raise Exception("user does not fulfill policy. Missing attribute %s" % attr_policy)
 
             SK_W *= SK_uid[attr_identifier][attr_value]
-            SK_W *= APK['UPK'][attr_identifier][attr_value]
+            UPK_W *= APK['UPK'][attr_identifier][attr_value]
 
-        return (CT['C_1'] * pair(GPP['H'](userObj['uid']), CT['C_3'])) \
-               / (pair(CT['C_2'], SK_W) * pair(SK_uid_oid, UPK_W))
-
-
+        return (CT['C_1'] * pair(GPP['H'](userObj['uid']), CT['C_3'])) / (pair(CT['C_2'], SK_W) * pair(SK_uid_oid, UPK_W))
 
 
 def basicTest():
@@ -220,36 +215,44 @@ def basicTest():
     dac = TFDACMACS(groupObj)
     GPP = dac.setup()
 
-    users = {}  # public user data
+    # authority registry
     authorities = {}
 
+    # setup authority
     authorityAttributes = {
-            "authority1.male": ['true', 'false'],
-            "authority1.student": ['true', 'false']
+            "tuBerlin.male": ['true', 'false'],
+            "tuBerlin.student": ['true', 'false']
     }
-    authority1 = "authority1"
-    APK, ASK = dac.setupAuthority(GPP, authority1, authorityAttributes)
-    authorities[authority1] = APK
+    authorityId = "tuBerlin"
+    APK, ASK = dac.setupAuthority(GPP, authorityId, authorityAttributes)
+    authorities[authorityId] = APK
 
+    # register alice as the message receiver
     alice = dac.registerUser(GPP)
     aliceAttriubtes = [
-        "authority1.male:false",
-        "authority1.student:true",
+        "tuBerlin.male:false",
+        "tuBerlin.student:true",
     ]
     SK_alice = dac.keygen(GPP, aliceAttriubtes, alice, ASK, APK)
 
+    # register bob as the message sender (data owner)
     OSK_bob, OPK_bob = dac.setupDataOwner(GPP)
 
+    # register alice to bob
+    DO_alice_to_bob = dac.authRequest(GPP, alice, OSK_bob)
+    
+    # random message
     m = groupObj.random(GT)
 
-    policy_str = 'authority1.male=false and authority1.student=true'
+    # bob encrypts message
+    policy_str = 'tuBerlin.male:false and tuBerlin.student:true'
+    CT = dac.encrypt(GPP, policy_str, m, authorities, OSK_bob)
 
-    CT = dac.encrypt(GPP, policy_str, m, authorities, OPK_bob)
+    # Alice decrypts message
+    PT = dac.decrypt(GPP, CT, alice, SK_alice, DO_alice_to_bob, APK)
 
-    PT = dac.decrypt(CT, TK, alice['keys'][1])
-
-    # print "k", k
-    # print "PT", PT
+    print("M:", m)
+    print("PT:", PT)
 
     assert m == PT, 'FAILED DECRYPTION!'
     print('SUCCESSFUL DECRYPTION')
