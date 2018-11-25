@@ -1,5 +1,5 @@
 '''
-Kan Yang, Xiaohua Jia
+XIAOYU LI, SHAOHUA TANG, LINGLING XU, HUAQUN WANG, AND JIE CHEN
 
 | From: Two-Factor Data Access Control With Efficient Revocation for Multi-Authority Cloud Storage Systems
 | Published in:   IEEE
@@ -387,9 +387,9 @@ def basicTest_withput2FA():
     assert m == PT, 'FAILED DECRYPTION!'
     print('SUCCESSFUL DECRYPTION')
 
+
 if __name__ == '__main__':
     basicTest()
     basicTest_complexAttribute()
     basicTest_withMultipleAuthorities()
     basicTest_withput2FA()
-    # test()
