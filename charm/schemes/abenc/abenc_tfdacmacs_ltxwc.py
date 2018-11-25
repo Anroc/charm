@@ -4,7 +4,7 @@ XIAOYU LI, SHAOHUA TANG, LINGLING XU, HUAQUN WANG, AND JIE CHEN
 | From: Two-Factor Data Access Control With Efficient Revocation for Multi-Authority Cloud Storage Systems
 | Published in:   IEEE
 | Available From: https://ieeexplore.ieee.org/document/7570209
-| Notes: n-of-n threshhold gate policy
+| Notes: n-of-n threshhold gate policy, extended scheme so that 2FA can be disabled if needed
 
 * type:           ciphertext-policy attribute-based encryption (public key)
 * setting:        Pairing
@@ -19,6 +19,8 @@ from charm.toolbox.ABEncMultiAuth import ABEncMultiAuth
 import uuid
 
 class TFDACMACS(object):
+    ERROR_ATTR_MSG = lambda attr : "Expected attribute of form 'aid.attr_name:attr_value' but was %s." % attr
+
     def __init__(self, groupObj):
         self.util = SecretUtil(groupObj, verbose=False)
         self.group = groupObj
@@ -29,6 +31,26 @@ class TFDACMACS(object):
         H = lambda x: self.group.hash(x, G1)
         GPP = {'g': g, 'H': H}
         return GPP
+
+
+    def _extractAttributeComponents(self, attribute):
+        assert type(attribute) == str
+        assert ":" in attribute and "." in attribute, self.ERROR_ATTR_MSG(attribute)
+
+        attr_identifier_value_split = attribute.split(":")
+        assert len(attr_identifier_value_split) == 2, self.ERROR_ATTR_MSG(attribute)
+        attr_identifier = attr_identifier_value_split[0]
+        attr_value = attr_identifier_value_split[1]
+
+        attr_aid_name_split = attr_identifier.split(".")
+        assert len(attr_aid_name_split) == 2, self.ERROR_ATTR_MSG(attribute)
+        return {
+            'aid': attr_aid_name_split[0],
+            'name': attr_aid_name_split[1],
+            'id': attr_identifier,
+            'value': attr_value
+        }
+
 
     def registerUser(self, GPP):
         '''Generate user keys (executed by user, signed by CA).'''
@@ -133,13 +155,10 @@ class TFDACMACS(object):
         post_processed_attributes = list()
 
         for attribute in attributes:
-            current_aid = attribute.split(".")[0]
-            attr_value_split = attribute.split(":")
-            attribute_identifier = attr_value_split[0]
-            value = attr_value_split[1]
-            assert len(attr_value_split) == 2, "Expected attribute of form 'aid.attr_name:attr_value' but was %s." % attribute
+            attr_obj = self._extractAttributeComponents(attribute)
+            current_aid = attr_obj['aid']
             assert current_aid in pk_authorities, "Authority %s for attribute %s not found." % (current_aid, attribute)
-            assert attribute_identifier in pk_authorities[current_aid]['UPK'] and value in pk_authorities[current_aid]['UPK'][attribute_identifier], "Authority %s for attribute %s not found." % (current_aid, attribute)
+            assert attr_obj['id'] in pk_authorities[current_aid]['UPK'] and attr_obj['value'] in pk_authorities[current_aid]['UPK'][attr_obj['id']], "Authority %s for attribute %s not found." % (current_aid, attribute)
             aa = pk_authorities[current_aid]
 
             if current_aid not in aa_groups:
@@ -150,12 +169,7 @@ class TFDACMACS(object):
             else:
                 aa_groups[current_aid]['n'] += 1
 
-            post_processed_attributes.append({
-                'identifier': attribute_identifier,
-                'name': attribute,
-                'aid': current_aid,
-                'value': value
-            })
+            post_processed_attributes.append(attr_obj)
 
         return aa_groups, post_processed_attributes
 
@@ -178,7 +192,7 @@ class TFDACMACS(object):
 
         for attribute in pp_attributes:
             aid = attribute['aid']
-            attr_id = attribute['identifier']
+            attr_id = attribute['id']
             attr_value = attribute['value']
             C_3 *= AAs[aid]['aa']['UPK'][attr_id][attr_value]
         C_3 **= s + OSK['alpha'] if OSK is not None else s
@@ -214,6 +228,95 @@ class TFDACMACS(object):
                    / (pair(CT['C_2'], SK_W) * pair(twoFA_key, UPK_W))
         else:
             return (CT['C_1'] * pair(GPP['H'](userObj['uid']), CT['C_3'])) / pair(CT['C_2'], SK_W)
+
+    def keyUpdate(self, GPP, attribute, ASK, APK, OPK, CTs, nonRevokedUsers):
+        """
+        Run by AA. Generates The key update key for users.
+        :param GPP: global public parameters
+        :param attribute: attribute string in the form of "authId.attrId:value" the attribute value to revoke
+        :param ASK: secret key of AA
+        :param ASK: public key of AA. This will be updated
+        :param OPK: data owners public key
+        :param CTs: list of all cipher texts related to the revoked attribute u
+        :param nonRevokedUsers: list of non revoked userObjects
+        :return: KUK: dict of userIds to key update keys and CUK: dict of ciphertext ids to cipher text update keys
+                 ASK: the updates authority secret key and APK: the update authority public key
+        """
+        attr_obj = self._extractAttributeComponents(attribute)
+        y_old = ASK['USK'][attr_obj['id']][attr_obj['value']]
+        y_new = self.group.random()
+        y_delta = y_new - y_old
+        g = GPP['g']
+        H = GPP['H']
+        UPK_new = g ** y_new
+
+        KUK = dict() # user id to update key
+        for nonRevokedUser in nonRevokedUsers:
+            # TODO: filter for users that actually own the attr that will be revoked
+            # no security implication, rather then a performance boost
+            uid = nonRevokedUser['uid']
+            KUK[uid] = H(uid) ** y_delta
+
+        CUK = dict() # label (ID_w) to cipher text update key
+        for ct in CTs:
+            if ct['oid'] is not None:
+                CUK[ct['ID_w']] = (ct['C_2'] * OPK['g_alpha']) ** y_delta
+            else:
+                CUK[ct['ID_w']] = ct['C_2'] ** y_delta
+
+        # update secret keys of authority
+        ASK['USK'][attr_obj['id']][attr_obj['value']] = y_new
+        APK['UPK'][attr_obj['id']][attr_obj['value']] = UPK_new
+
+        # keep first, send KUK to respective user and CUK to CSP
+        return KUK, CUK, ASK, APK
+
+
+    def skUpdate(self, SKU, kuk, attribute):
+        """
+        Run by user.
+        :param SKU: The secret key chain of the user
+        :param kuk: the key update key for the given attribute
+        :param attribute: the attribute to update
+        :return: the update SKU
+        """
+        attr_obj = self._extractAttributeComponents(attribute)
+        sku_old = SKU[attr_obj['id']][attr_obj['value']]
+        sk_new = sku_old * kuk
+        SKU[attr_obj['id']][attr_obj['value']] = sk_new
+        return SKU
+
+    def ctaUpdate(self, GPP, cuk, ct, pk_authorities):
+        """
+        Run by CSP
+        :param cuk: the update key for the ct
+        :param ct: the cipher text that will be updated
+        :return: the updated cipher text
+        """
+        AAs, pp_attributes = self._groupByAuthorityAndCount(ct['W'], pk_authorities)
+
+        g = GPP['g']
+        r = self.group.random()
+        C_1 = self.group.init(ZR, 1)
+        C_2 = ct['C_2'] * g ** r
+        C_3 = self.group.init(ZR, 1)
+
+        for aid, AA in AAs.items():
+            C_1 *= AA['aa']['APK'] ** self.group.init(ZR, AA['n'])
+        C_1 = ct['C_1'] * C_1 ** r
+
+        for attribute in pp_attributes:
+            aid = attribute['aid']
+            attr_id = attribute['id']
+            attr_value = attribute['value']
+            # don't need to filter here since we update already the APK
+            C_3 *= AAs[aid]['aa']['UPK'][attr_id][attr_value]
+
+        C_3 = ct['C_3'] * cuk * C_3 ** r
+        ct['C_1'] = C_1
+        ct['C_2'] = C_2
+        ct['C_3'] = C_3
+        return ct
 
 
 def basicTest():
@@ -261,6 +364,8 @@ def basicTest():
     assert m == PT, 'FAILED DECRYPTION!'
     print('SUCCESSFUL DECRYPTION')
 
+    return dac, GPP, authorities, APK, ASK, alice, aliceAttriubtes, SK_alice, OPK_bob, DO_alice_to_bob, m, CT
+
 
 def basicTest_complexAttribute():
     print("RUN basicTest with complex attributes")
@@ -301,6 +406,8 @@ def basicTest_complexAttribute():
 
     assert m == PT, 'FAILED DECRYPTION!'
     print('SUCCESSFUL DECRYPTION')
+
+    return dac, GPP, authorities, APK, ASK, alice, aliceAttriubtes, SK_alice, OPK_bob, DO_alice_to_bob, m, CT
 
 
 def basicTest_withMultipleAuthorities():
@@ -352,6 +459,8 @@ def basicTest_withMultipleAuthorities():
     assert m == PT, 'FAILED DECRYPTION!'
     print('SUCCESSFUL DECRYPTION')
 
+    return dac, GPP, authorities, APK_HPI, ASK_HPI, alice, aliceAttributesHPI, SK_alice, OPK_bob, DO_alice_to_bob, m, CT
+
 
 def basicTest_withput2FA():
     print("RUN basicTest without 2FA")
@@ -387,9 +496,44 @@ def basicTest_withput2FA():
     assert m == PT, 'FAILED DECRYPTION!'
     print('SUCCESSFUL DECRYPTION')
 
+    return dac, GPP, authorities, APK, ASK, alice, aliceAttriubtes, SK_alice, None, None, m, CT
+
+
+def revocationTest(dac, GPP, authorities, APK, ASK, alice, aliceAttriubtes, SK_alice, OPK_bob, DO_alice_to_bob, m, CT):
+    attrToRevoke = aliceAttriubtes[0]
+    print("Revoking: ", attrToRevoke)
+
+    # authority that issued the revoked attribute generates the update keys.
+    KUK, CUK, ASK, APK = dac.keyUpdate(GPP, attrToRevoke, ASK, APK, OPK_bob, [ CT ], [ alice ])
+
+    for uid, kuk in KUK.items():
+        assert uid == alice['uid']
+        # update alice key
+        SK_alice = dac.skUpdate(SK_alice, kuk, attrToRevoke)
+
+    for id_w, cuk in CUK.items():
+        assert id_w == CT['ID_w']
+        # CSP updates chiphertext
+        CT = dac.ctaUpdate(GPP, cuk, CT, authorities)
+
+    # Alice decrypts message
+    PT = dac.decrypt(GPP, CT, alice, SK_alice, authorities, twoFA_key=DO_alice_to_bob)
+
+    print("m", m)
+    print("PT", PT)
+
+    assert m == PT, 'FAILED DECRYPTION!'
+    print('SUCCESSFUL DECRYPTION')
+
 
 if __name__ == '__main__':
     basicTest()
     basicTest_complexAttribute()
     basicTest_withMultipleAuthorities()
     basicTest_withput2FA()
+
+    revocationTest(basicTest)
+    revocationTest(basicTest_complexAttribute)
+    revocationTest(basicTest_withMultipleAuthorities)
+    revocationTest(basicTest_withput2FA)
+
