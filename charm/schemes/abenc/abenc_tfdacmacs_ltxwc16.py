@@ -298,13 +298,7 @@ class TFDACMACS(object):
         SKU[attr_obj['id']][attr_obj['value']] = sk_new
         return SKU
 
-    def ctaUpdate(self, GPP, cuk, ct, pk_authorities):
-        """
-        Run by CSP
-        :param cuk: the update key for the ct
-        :param ct: the cipher text that will be updated
-        :return: the updated cipher text
-        """
+    def _update_ciphertext(self, GPP, ct, pk_authorities, update_value):
         AAs, pp_attributes = self._groupByAuthorityAndCount(ct['W'], pk_authorities)
 
         g = GPP['g']
@@ -324,11 +318,73 @@ class TFDACMACS(object):
             # don't need to filter here since we update already the APK
             C_3 *= AAs[aid]['aa']['UPK'][attr_id][attr_value]
 
-        C_3 = ct['C_3'] * cuk * C_3 ** r
+        C_3 = ct['C_3'] * update_value * C_3 ** r
         ct['C_1'] = C_1
         ct['C_2'] = C_2
         ct['C_3'] = C_3
         return ct
+
+
+    def ctaUpdate(self, GPP, cuk, ct, pk_authorities):
+        """
+        Run by CSP
+        :param cuk: the update key for the ct
+        :param ct: the cipher text that will be updated
+        :return: the updated cipher text
+        """
+        return self._update_ciphertext(GPP, ct, pk_authorities, cuk)
+
+
+
+    def daAuthUpdate(self, GPP, OSK, OPK, APKs, nonRevokedUsers):
+        """
+        Run by data owner. Revokes access to all users not contained in the nonRevokedUser list
+        :param GPP: the global public paramter
+        :param OSK: the secret key of the data owner
+        :param OPK: the public key of the data owner
+        :param APKs: dict of AID to attribute public keys
+        :param nonRevockedUsers: the list of user objects of non revoked users
+        :return: AUK: Authentication update key for each user. UAU: Attribute authentication update keys.
+                 OSK and OPK as the updated private and public keys
+        """
+        g = GPP['g']
+        H = GPP['H']
+        beta = self.group.random()
+        g_beta = g ** beta
+
+        OSK['alpha'] = beta
+        OPK['g_alpha'] = g_beta
+
+        alpha = OSK['alpha']
+
+        AUK = {userObj['uid']: H(userObj['uid']) ** (beta - alpha) for userObj in nonRevokedUsers}
+        UAU = {
+            aid: {
+                attr_id: {
+                    attr_value: {
+                        APKs[aid]['UPK'][attr_id][attr_value] ** (beta - alpha)
+                    } for attr_value in APKs[aid]['UPK'][attr_id]
+                } for attr_id in APKs[aid]['UPK']
+            } for aid in APKs['aid']
+        }
+        return AUK, UAU, OSK, OPK
+
+
+    def authUpdate(self, user_auth_sk, auk):
+        user_auth_sk *= auk
+        return user_auth_sk
+
+
+    def ctoUpdate(self, GPP, UAU, ct, oid, pk_authorities):
+        if ct['oid'] == oid:
+            update_value = self.group.init(ZR, 1)
+            for attribute in ct['w']:
+                attr_obj = self._extractAttributeComponents(attribute)
+                update_value *= UAU[attr_obj['aid']][attr_obj['id']][attr_obj['value']]
+            return self._update_ciphertext(GPP, ct, pk_authorities, update_value)
+        else:
+            return ct
+
 
 
 def basicTest():
