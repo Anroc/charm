@@ -365,7 +365,7 @@ class TFDACMACS(object):
                         APKs[aid]['UPK'][attr_id][attr_value] ** (beta - alpha)
                     } for attr_value in APKs[aid]['UPK'][attr_id]
                 } for attr_id in APKs[aid]['UPK']
-            } for aid in APKs['aid']
+            } for aid in APKs
         }
         return AUK, UAU, OSK, OPK
 
@@ -378,7 +378,7 @@ class TFDACMACS(object):
     def ctoUpdate(self, GPP, UAU, ct, oid, pk_authorities):
         if ct['oid'] == oid:
             update_value = self.group.init(ZR, 1)
-            for attribute in ct['w']:
+            for attribute in ct['W']:
                 attr_obj = self._extractAttributeComponents(attribute)
                 update_value *= UAU[attr_obj['aid']][attr_obj['id']][attr_obj['value']]
             return self._update_ciphertext(GPP, ct, pk_authorities, update_value)
@@ -432,7 +432,7 @@ def basicTest():
     assert m == PT, 'FAILED DECRYPTION!'
     print('SUCCESSFUL DECRYPTION')
 
-    return dac, GPP, authorities, APK, ASK, alice, aliceAttriubtes, SK_alice, OPK_bob, DO_alice_to_bob, m, CT
+    return dac, GPP, authorities, APK, ASK, alice, aliceAttriubtes, SK_alice, OSK_bob, OPK_bob, DO_alice_to_bob, m, CT
 
 
 def basicTest_complexAttribute():
@@ -475,7 +475,7 @@ def basicTest_complexAttribute():
     assert m == PT, 'FAILED DECRYPTION!'
     print('SUCCESSFUL DECRYPTION')
 
-    return dac, GPP, authorities, APK, ASK, alice, aliceAttriubtes, SK_alice, OPK_bob, DO_alice_to_bob, m, CT
+    return dac, GPP, authorities, APK, ASK, alice, aliceAttriubtes, SK_alice, OSK_bob, OPK_bob, DO_alice_to_bob, m, CT
 
 
 def basicTest_withMultipleAuthorities():
@@ -527,7 +527,7 @@ def basicTest_withMultipleAuthorities():
     assert m == PT, 'FAILED DECRYPTION!'
     print('SUCCESSFUL DECRYPTION')
 
-    return dac, GPP, authorities, APK_HPI, ASK_HPI, alice, aliceAttributesHPI, SK_alice, OPK_bob, DO_alice_to_bob, m, CT
+    return dac, GPP, authorities, APK_HPI, ASK_HPI, alice, aliceAttributesHPI, SK_alice, OSK_bob, OPK_bob, DO_alice_to_bob, m, CT
 
 
 def basicTest_withput2FA():
@@ -564,12 +564,12 @@ def basicTest_withput2FA():
     assert m == PT, 'FAILED DECRYPTION!'
     print('SUCCESSFUL DECRYPTION')
 
-    return dac, GPP, authorities, APK, ASK, alice, aliceAttriubtes, SK_alice, None, None, m, CT
+    return dac, GPP, authorities, APK, ASK, alice, aliceAttriubtes, SK_alice, None, None, None, m, CT
 
 
 def revocationTest(setupMethod):
     print("=== Setup for revocation. ===")
-    dac, GPP, authorities, APK, ASK, alice, aliceAttriubtes, SK_alice, OPK_bob, DO_alice_to_bob, m, CT = setupMethod()
+    dac, GPP, authorities, APK, ASK, alice, aliceAttriubtes, SK_alice, _, OPK_bob, DO_alice_to_bob, m, CT = setupMethod()
     print("=== Setup finished. ===")
 
     attrToRevoke = aliceAttriubtes[0]
@@ -598,6 +598,29 @@ def revocationTest(setupMethod):
     print('SUCCESSFUL DECRYPTION')
 
 
+def user2FARevocationTest(setupMethod):
+    print("=== Setup for revocation. ===")
+    dac, GPP, authorities, APK, ASK, alice, aliceAttriubtes, SK_alice, OSK_bob, OPK_bob, DO_alice_to_bob, m, CT = setupMethod()
+    print("=== Setup finished. ===")
+
+    AUK, UAU, OSK_bob, OPK_bob = dac.daAuthUpdate(GPP, OSK_bob, OPK_bob, authorities, [alice])
+
+    SK_alice = dac.authUpdate(DO_alice_to_bob, AUK[alice['uid']])
+
+    CT = dac.ctoUpdate(GPP, UAU, CT, OSK_bob['oid'], authorities)
+
+    # Alice decrypts message
+    PT = dac.decrypt(GPP, CT, alice, SK_alice, authorities, twoFA_key=DO_alice_to_bob)
+
+    print("m", m)
+    print("PT", PT)
+
+    assert m == PT, 'FAILED DECRYPTION!'
+    print('SUCCESSFUL DECRYPTION')
+
+
+
+
 if __name__ == '__main__':
     basicTest()
     basicTest_complexAttribute()
@@ -608,4 +631,7 @@ if __name__ == '__main__':
     revocationTest(basicTest_complexAttribute)
     revocationTest(basicTest_withMultipleAuthorities)
     revocationTest(basicTest_withput2FA)
+
+    # TODO: fix me
+    #'user2FARevocationTest(basicTest)
 
