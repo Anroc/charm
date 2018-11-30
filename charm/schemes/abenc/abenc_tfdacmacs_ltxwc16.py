@@ -351,22 +351,20 @@ class TFDACMACS(object):
         H = GPP['H']
         beta = self.group.random()
         g_beta = g ** beta
-
-        OSK['alpha'] = beta
-        OPK['g_alpha'] = g_beta
-
         alpha = OSK['alpha']
 
         AUK = {userObj['uid']: H(userObj['uid']) ** (beta - alpha) for userObj in nonRevokedUsers}
-        UAU = {
-            aid: {
-                attr_id: {
-                    attr_value: {
-                        APKs[aid]['UPK'][attr_id][attr_value] ** (beta - alpha)
-                    } for attr_value in APKs[aid]['UPK'][attr_id]
-                } for attr_id in APKs[aid]['UPK']
-            } for aid in APKs
-        }
+
+        UAU = dict()
+        for aid, AA in APKs.items():
+            UAU[aid] = dict()
+            for attr_id, attr in AA['UPK'].items():
+                UAU[aid][attr_id] = dict()
+                for attr_value, attr_pk in attr.items():
+                    UAU[aid][attr_id][attr_value] = attr_pk ** (beta - alpha)
+
+        OSK['alpha'] = beta
+        OPK['g_alpha'] = g_beta
         return AUK, UAU, OSK, OPK
 
 
@@ -530,7 +528,7 @@ def basicTest_withMultipleAuthorities():
     return dac, GPP, authorities, APK_HPI, ASK_HPI, alice, aliceAttributesHPI, SK_alice, OSK_bob, OPK_bob, DO_alice_to_bob, m, CT
 
 
-def basicTest_withput2FA():
+def basicTest_without2FA():
     print("RUN basicTest without 2FA")
     groupObj = PairingGroup('SS512')
     dac = TFDACMACS(groupObj)
@@ -605,7 +603,7 @@ def user2FARevocationTest(setupMethod):
 
     AUK, UAU, OSK_bob, OPK_bob = dac.daAuthUpdate(GPP, OSK_bob, OPK_bob, authorities, [alice])
 
-    SK_alice = dac.authUpdate(DO_alice_to_bob, AUK[alice['uid']])
+    DO_alice_to_bob = dac.authUpdate(DO_alice_to_bob, AUK[alice['uid']])
 
     CT = dac.ctoUpdate(GPP, UAU, CT, OSK_bob['oid'], authorities)
 
@@ -619,19 +617,17 @@ def user2FARevocationTest(setupMethod):
     print('SUCCESSFUL DECRYPTION')
 
 
-
-
 if __name__ == '__main__':
     basicTest()
     basicTest_complexAttribute()
     basicTest_withMultipleAuthorities()
-    basicTest_withput2FA()
+    basicTest_without2FA()
 
     revocationTest(basicTest)
     revocationTest(basicTest_complexAttribute)
     revocationTest(basicTest_withMultipleAuthorities)
-    revocationTest(basicTest_withput2FA)
+    revocationTest(basicTest_without2FA)
 
-    # TODO: fix me
-    #'user2FARevocationTest(basicTest)
-
+    user2FARevocationTest(basicTest)
+    user2FARevocationTest(basicTest_complexAttribute)
+    user2FARevocationTest(basicTest_withMultipleAuthorities)
