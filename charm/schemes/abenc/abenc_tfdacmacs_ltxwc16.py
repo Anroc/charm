@@ -52,14 +52,14 @@ class TFDACMACS(object):
         }
 
 
-    def registerUser(self, GPP):
+    def registerUser(self, GPP, user_id = None):
         """
         Registers a user to the CA.
         :param GPP: the global public paramter
         :return: the global user id, a certificate for the users keys
         """
         g = GPP['g']
-        uid = str(uuid.uuid4())
+        uid = str(uuid.uuid4()) if user_id is None else user_id
         # TODO: figure out for when they are used.
         sk = self.group.random()
         pk = g ** sk

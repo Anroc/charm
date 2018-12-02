@@ -1,41 +1,51 @@
 import unittest
 import time
-import sys
 
-from charm.schemes.abenc.abenc_lsw08 import KPabe
-from charm.schemes.abenc.abenc_unmcpabe_yahk14 import CPABE_YAHK14
-from charm.schemes.abenc.abenc_maabe_lw14 import CPabe_LW14
-from charm.schemes.abenc.abenc_wlwg11 import CPabe_WLGW11
+from charm.test.benchmark.wrappers.dacmacs_wrapper import DACMACS_Wrapper, MAABEBenchmarkWrapper
+from charm.test.benchmark.wrappers.tfdacmacs_wrapper import TFDACMACS_Wrapper
 from charm.toolbox.pairinggroup import PairingGroup, GT
 
 import matplotlib.pyplot as plt
 import numpy as np
 
-groups = [PairingGroup('SS512'),  PairingGroup('SS512'),  PairingGroup('SS512'), PairingGroup('SS512')]
-testclasses = [KPabe(groups[0]), CPABE_YAHK14(groups[1]), CPabe_LW14(groups[2]), CPabe_WLGW11(groups[3])]
-setup = [tc.setup() for tc in testclasses]
-message = [group.random() for group in groups]
 
 class BenchmarkTest1(unittest.TestCase):
     NUM_RUN = 30
-
     index = 0
-    fig, axes = plt.subplots(3, 2, figsize=(12,12))
+
+    def prepare(self):
+        self.fig, self.axes = plt.subplots(3, 2, figsize=(12, 12))
+
+        self.schemes = [
+            TFDACMACS_Wrapper(),
+            DACMACS_Wrapper()
+        ]
+
+    def _generate_attributes(self, i):
+        return [MAABEBenchmarkWrapper.DEFAULT_AUTHORITY_ID + str(a) for a in range(0, i)]
+
+    def _init_list(self):
+        res = list()
+        for _ in self.schemes:
+            res.append(list())
+        return res
 
     def benchmarkSetup(self):
-        res = list()
-
-        for _ in testclasses:
-            res.append(list())
-
+        res = self._init_list()
         for i in range(0, self.NUM_RUN):
-            for j, tc in enumerate(testclasses):
-                start_time = time.time()
-                tc.setup()
-                end_time = time.time()
-                res[j].append(end_time - start_time)
+            for j, tc in enumerate(self.schemes):
+                res[j].append(tc.measure_setup())
 
         self.plot(res, "Setup", xlable="# of runs")
+
+    def benchmarkAuthoritySetup(self):
+        res = self._init_list()
+        for i in range(0, self.NUM_RUN):
+            for j, tc in enumerate(self.schemes):
+                attributes = self._generate_attributes(i)
+                res[j].append(tc.measure_authsetup(attributes))
+
+        self.plot(res, "Authority setup", xlable="# of attributes")
 
     def benchmarkKeygen(self):
         res = list()
@@ -124,10 +134,12 @@ class BenchmarkTest1(unittest.TestCase):
         self.plot(res, "Decrypt")
 
     def testall(self):
+        self.prepare()
         self.benchmarkSetup()
-        self.benchmarkKeygen()
-        self.benchmarkEncrypt()
-        self.benchmarkDecrypt()
+        self.benchmarkAuthoritySetup()
+        # self.benchmarkKeygen()
+        # self.benchmarkEncrypt()
+        # self.benchmarkDecrypt()
         plt.show()
 
     def plot(self,
@@ -143,8 +155,8 @@ class BenchmarkTest1(unittest.TestCase):
         x = np.linspace(1, self.NUM_RUN, num=self.NUM_RUN)
         axes.plot(x, res[0], marker=".", label="[LSW 08] - KP")
         axes.plot(x, res[1], marker="^", label="[YAHK 14] - CP with non-monotone")
-        axes.plot(x, res[2], marker="X", label="[LW 14] - CP")
-        axes.plot(x, res[3], marker="P", label="[WLWG 11] - CP multi-authority")
+        # axes.plot(x, res[2], marker="X", label="[LW 14] - CP")
+        # axes.plot(x, res[3], marker="P", label="[WLWG 11] - CP multi-authority")
         if self.index == 1:
             axes.legend()
 
