@@ -1,4 +1,4 @@
-import time
+import time, sys
 
 from charm.toolbox.pairinggroup import PairingGroup
 
@@ -11,6 +11,8 @@ def find_entity(entity_id, entities, entity_key_name="GID"):
             return entity, end_time - start_time
     raise Exception("Could not find entity %s." % entity_id)
 
+def dict_to_size(obj):
+    return sys.getsizeof(str(obj))
 
 class MAABEBenchmarkWrapper(object):
     DEFAULT_AUTHORITY_ID = "TUBERLIN"
@@ -35,6 +37,15 @@ class MAABEBenchmarkWrapper(object):
         return 0
 
     def decrypt(self, user_id):
+        return 0
+
+    def getSizeOfUser(self, user_id):
+        return 0
+
+    def getSizeOfAuth(self, auth_id):
+        return 0
+
+    def getSizeOfCT(self):
         return 0
 
     def measure_setup(self):
