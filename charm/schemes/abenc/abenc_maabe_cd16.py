@@ -34,9 +34,9 @@ class RDABE(object):
             'H_1': lambda x: self.group.hash(x, G1)
         }
 
-    def registerUser(self):
+    def registerUser(self, user_id = None):
         return {
-            'GID': str(uuid.uuid4())
+            'GID': str(uuid.uuid4()) if user_id is None else user_id
         }
 
     def setupAuthority(self, GPP, attributes, aid):
