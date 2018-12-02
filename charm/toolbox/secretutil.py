@@ -161,6 +161,21 @@ class SecretUtil:
             print("unsupported OpType: " + op_type)
         return matrix, p
 
+    def findMatchingLSSSRows(self, matrix, p, attributes):
+        """
+        For each row of the matrix it is checked if the given attribute list can satisfy this row.
+        If so it is appended in the result set.
+        The mapping of the original rows to the subset rows are saved in the second return paramter.
+        :param matrix: the original LSSS matrix
+        :param matrix: the p mapping of each row of A to an attribute
+        :param attributes: the attributes of the user
+        :return: the subset rows of the matrix, the mapping of original row of the matrix to the index of the attribute list
+        """
+        attributes = list(attributes)
+        policy_A = np.array([matrix[k] for k in range(0, len(p)) if p[k] in attributes])
+        attr_index = np.array([(k, attributes.index(p[k])) for k in range(0, len(p)) if p[k] in attributes])
+        return policy_A, attr_index
+
     def _find_linear_independent_rows(self, matrix):
         ks = list()
         independent_rows = list()

@@ -229,8 +229,7 @@ class CPabe_LW14(ABEnc):
         A = ct['A']
         p = ct['p']
         hash_S = [group.hash(s) for s in sk['S']]
-        policy_A = np.array([A[k] for k in range(0, len(p)) if p[k] in hash_S])
-        attr_index = np.array([(k, hash_S.index(p[k])) for k in range(0, len(p)) if p[k] in hash_S])
+        policy_A, attr_index = util.findMatchingLSSSRows(A, p, hash_S)
         k, w = util.solveLSSSMatrix(policy_A)
 
         if debug:

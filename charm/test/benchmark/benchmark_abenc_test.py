@@ -4,7 +4,7 @@ import sys
 
 from charm.schemes.abenc.abenc_lsw08 import KPabe
 from charm.schemes.abenc.abenc_unmcpabe_yahk14 import CPABE_YAHK14
-from charm.schemes.abenc.abenc_lw14 import CPabe_LW14
+from charm.schemes.abenc.abenc_maabe_lw14 import CPabe_LW14
 from charm.schemes.abenc.abenc_wlwg11 import CPabe_WLGW11
 from charm.toolbox.pairinggroup import PairingGroup, GT
 

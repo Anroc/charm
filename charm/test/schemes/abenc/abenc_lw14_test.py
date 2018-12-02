@@ -1,6 +1,6 @@
 import unittest
 
-from charm.schemes.abenc.abenc_lw14 import CPabe_LW14
+from charm.schemes.abenc.abenc_maabe_lw14 import CPabe_LW14
 from charm.toolbox.pairinggroup import PairingGroup, GT
 
 debug = True
