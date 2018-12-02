@@ -272,11 +272,10 @@ class SecretUtil:
 
     def to_dnf_matrix(self, policy_str):
         # [()\s]+ matches any ( or ) and any whitspace character
-        policy = re.sub(r"[()\s]+", '', policy_str, flags=re.IGNORECASE)
-        dist = re.split(r"or", policy, flags=re.IGNORECASE)
+        dist = re.split(r"[()\s]+or[()\s]+", policy_str, flags=re.IGNORECASE)
         ret = list()
         for i, d in enumerate(dist):
-            ret.append(re.split(r"and", d, flags=re.IGNORECASE))
+            ret.append(re.split(r"[()\s]+and[()\s]+", d, flags=re.IGNORECASE))
         return ret
 
     def createNofNThresholdPolicy(self, policy_str):

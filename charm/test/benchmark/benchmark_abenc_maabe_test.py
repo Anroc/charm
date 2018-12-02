@@ -1,16 +1,16 @@
 import unittest
-import time, sys
 
-from charm.test.benchmark.wrappers.dacmacs_wrapper import DACMACS_Wrapper, MAABEBenchmarkWrapper
+from charm.test.benchmark.wrappers.dacmacs_wrapper import DACMACS_Wrapper
 from charm.test.benchmark.wrappers.tfdacmacs_wrapper import TFDACMACS_Wrapper
-from charm.toolbox.pairinggroup import PairingGroup, GT
+from charm.test.benchmark.wrappers.habe_wrapper import HABE_Wrapper
+from charm.toolbox.pairinggroup import GT
 
 import matplotlib.pyplot as plt
 import numpy as np
 
 
 class BenchmarkTest1(unittest.TestCase):
-    NUM_RUN = 30
+    NUM_RUN = 10
     index = 0
 
     def prepare(self):
@@ -18,7 +18,8 @@ class BenchmarkTest1(unittest.TestCase):
 
         self.schemes = [
             TFDACMACS_Wrapper(),
-            DACMACS_Wrapper()
+            DACMACS_Wrapper(),
+            HABE_Wrapper()
         ]
 
         self.message = self.schemes[0].group.random(GT)
@@ -132,7 +133,7 @@ class BenchmarkTest1(unittest.TestCase):
         x = np.linspace(1, self.NUM_RUN, num=self.NUM_RUN)
         axes.plot(x, res[0], marker=".", label="[LTXWC 16] - TF-DAC-MACS")
         axes.plot(x, res[1], marker="^", label="[YJ 14] - DAC-MACS")
-        # axes.plot(x, res[2], marker="X", label="[LW 14] - CP")
+        axes.plot(x, res[2], marker="X", label="[LW 14] - HABE")
         # axes.plot(x, res[3], marker="P", label="[WLWG 11] - CP multi-authority")
         if self.index == 1:
             axes.legend()

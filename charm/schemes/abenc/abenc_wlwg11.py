@@ -20,12 +20,6 @@ from charm.toolbox.secretutil import SecretUtil
 from charm.toolbox.ABEnc import ABEnc, Input, Output
 
 # type annotations
-pp_t = {'g': G1, 'h': G1, 'f_0': G1, 'f': [], 'G_0': G1, 'G': [], 'H_0': G1, 'H': [], 'E': [], 'Z': []}
-mk_t = {'alpha': [], 'r': [], 'c': [], 'counter': int}
-sk_t = {'i': int, 'j': int, 'S': [str], 'K': G1, 'K_tick': G1, 'K_ticktick': G1, 'K_dash': [G1], 'K_ij': [G1],
-        'K_tick_ij': [G1]}
-ct_t = {'C_tilde': GT, 'C': G1, 'Cy': G1, 'Cyp': G2}
-
 debug = False
 
 
