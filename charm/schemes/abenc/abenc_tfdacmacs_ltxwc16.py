@@ -247,7 +247,7 @@ class TFDACMACS(object):
         :param GPP: global public parameters
         :param attribute: attribute string in the form of "authId.attrId:value" the attribute value to revoke
         :param ASK: secret key of AA
-        :param ASK: public key of AA. This will be updated
+        :param APK: public key of AA. This will be updated
         :param OPK: data owners public key
         :param CTs: list of all cipher texts related to the revoked attribute u
         :param nonRevokedUsers: list of non revoked userObjects
@@ -617,6 +617,77 @@ def user2FARevocationTest(setupMethod):
     print('SUCCESSFUL DECRYPTION')
 
 
+def negativeDistributedSystemTest(setupMethod):
+    print("=== Setup for revocation. ===")
+    dac, GPP, authorities, APK, ASK, alice, aliceAttriubtes, SK_alice, OSK_bob, OPK_bob, DO_alice_to_bob, m, CT = setupMethod()
+    print("=== Setup finished. ===")
+
+    attrToRevoke = aliceAttriubtes[0]
+    print("Revoking: ", attrToRevoke)
+
+    # CRITICAL STEP:
+    # Since `authorities['tuBerlin'] is APK` (so they referencing the same object) they are changed together.
+    # (call by reference)
+    APK = {
+        'aid': APK['aid'],
+        'APK': APK['APK'],
+        'UPK': {
+            'tuBerlin.male': {
+                'true': APK['UPK']['tuBerlin.male']['true'],
+                'false': APK['UPK']['tuBerlin.male']['false']  # <-- value to revoke
+            },
+            'tuBerlin.student': {
+                'true': APK['UPK']['tuBerlin.student']['true'],
+                'false': APK['UPK']['tuBerlin.student']['false']
+            }
+        }
+    }
+
+    # authority that issued the revoked attribute generates the update keys.
+    # APK now holds the updated attribute public value
+    KUK, CUK, ASK, APK = dac.keyUpdate(GPP, attrToRevoke, ASK, APK, OPK_bob, [ CT ], [ alice ])
+
+    # Bob issues a data owner update in parallel
+    # Bob uses the old APK value that is still preserved in authorities['tuBerlin']
+    AUK, UAU, OSK_bob, OPK_bob = dac.daAuthUpdate(GPP, OSK_bob, OPK_bob, authorities, [alice])
+
+    # restore authorities with current values
+    authorities['tuBerlin'] = APK
+
+    for uid, kuk in KUK.items():
+        assert uid == alice['uid']
+        # update alice key
+        SK_alice = dac.skUpdate(SK_alice, kuk, attrToRevoke)
+
+    for id_w, cuk in CUK.items():
+        assert id_w == CT['ID_w']
+        # CSP updates chiphertext
+        CT = dac.ctaUpdate(GPP, cuk, CT, authorities)
+
+    # Alice decrypts message
+    PT = dac.decrypt(GPP, CT, alice, SK_alice, authorities, twoFA_key=DO_alice_to_bob)
+
+    print("m", m)
+    print("PT", PT)
+
+    assert m == PT, 'SUCCESSFUL DECRYPTION AFTER ATTRIBUTE REVOCATION!'
+    print('DECRYPTION SUCCESSFUL')
+
+    # update alice data owner key
+    DO_alice_to_bob = dac.authUpdate(DO_alice_to_bob, AUK[alice['uid']])
+    # CT is now unusable since it was updated with an wrong UAU value
+    CT = dac.ctoUpdate(GPP, UAU, CT, OSK_bob['oid'], authorities)
+
+    # Alice decrypts message
+    PT = dac.decrypt(GPP, CT, alice, SK_alice, authorities, twoFA_key=DO_alice_to_bob)
+
+    print("m", m)
+    print("PT", PT)
+
+    assert m != PT, 'EXPECTED DECRYPTION TO FAIL BUT WAS SUCCEEDED!'
+    print('DECRYPTION FAILED (Which is correct)')
+
+
 if __name__ == '__main__':
     basicTest()
     basicTest_complexAttribute()
@@ -631,3 +702,5 @@ if __name__ == '__main__':
     user2FARevocationTest(basicTest)
     user2FARevocationTest(basicTest_complexAttribute)
     user2FARevocationTest(basicTest_withMultipleAuthorities)
+
+    negativeDistributedSystemTest(basicTest)
